@@ -4,7 +4,7 @@
 from typing import List
 import torch
 from torch import nn
-from torch.autograd.function import Function
+import torch.nn.functional as F
 
 from detectron2.config import configurable
 from detectron2.layers import ShapeSpec
@@ -16,23 +16,14 @@ from detectron2.modeling.box_regression import Box2BoxTransform
 from detectron2.modeling.matcher import Matcher
 from detectron2.modeling.poolers import ROIPooler
 from detectron2.modeling.roi_heads.box_head import build_box_head
+from detectron2.modeling.roi_heads.cascade_rcnn import _ScaleGradient
+from detectron2.modeling.roi_heads import ROI_HEADS_REGISTRY
+from detectron2.modeling.roi_heads.fast_rcnn import fast_rcnn_inference
 
 from zsis.modeling.structures import pairwise_iou_max_scores
 
-from .fast_rcnn import FastRCNNOutputLayers, fast_rcnn_inference
-from .roi_heads import ROI_HEADS_REGISTRY, CustomStandardROIHeads
-
-import torch.nn.functional as F
-
-class _ScaleGradient(Function):
-    @staticmethod
-    def forward(ctx, input, scale):
-        ctx.scale = scale
-        return input
-
-    @staticmethod
-    def backward(ctx, grad_output):
-        return grad_output * ctx.scale, None
+from .fast_rcnn import FastRCNNOutputLayers
+from .roi_heads import CustomStandardROIHeads
 
 
 @ROI_HEADS_REGISTRY.register()
