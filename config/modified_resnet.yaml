@@ -1,0 +1,59 @@
+
+
+VERSION: 2
+INPUT:
+  FIXED_INPUT_SIZE: False
+  MIN_SIZE_TRAIN: (640, 672, 704, 736, 768, 800)
+MODEL:
+  MASK_ON: True
+  RESNETS:
+    LAYERS: [3, 4, 6, 3]
+  BACKBONE:
+    NAME: "build_modified_resnet_fpn_backbone"
+    FREEZE_AT: 0
+    CONFIG:
+      PRETRAINED: False
+      OUT_FEATURES:
+        - layer1
+        - layer2
+        - layer3
+        - layer4
+      STRIDES:
+        - 4
+        - 8
+        - 16
+        - 32
+      REMAPS:
+        - res2
+        - res3
+        - res4
+        - res5
+      REMOVE_LAYERS:
+        - attnpool
+  ROI_BOX_HEAD:
+    CLS_AGNOSTIC_BBOX_REG: True
+    NAME: "FastRCNNConvFCHead"
+    NUM_FC: 2
+    POOLER_RESOLUTION: 7
+  ROI_HEADS:
+    NAME: CustomCascadeROIHeads
+    IN_FEATURES: ["p2", "p3", "p4", "p5"]
+    NUM_CLASSES: &num_classes 1
+    SCORE_THRESH_TEST: 0.0
+    POSITIVE_FRACTION: 0.25
+    USE_DROPLOSS: True
+    DROPLOSS_IOU_THRESH: 0.01
+  ROI_MASK_HEAD:
+    NUM_CONV: 4
+  RPN:
+    IN_FEATURES: ["p2", "p3", "p4", "p5", "p6"]
+    POST_NMS_TOPK_TRAIN: 4000
+    NMS_THRESH: 0.65
+    PRE_NMS_TOPK_TRAIN: 2000
+    PRE_NMS_TOPK_TEST: 1000
+    POST_NMS_TOPK_TEST: 1000
+  FPN:
+    IN_FEATURES: ["res2", "res3", "res4", "res5"]
+  ANCHOR_GENERATOR:
+    SIZES: [[32], [64], [128], [256], [512]]
+    ASPECT_RATIOS: [[0.5, 1.0, 2.0]] 
