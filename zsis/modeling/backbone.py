@@ -9,10 +9,7 @@ from detectron2_timm.models.backbone import Backbone
 from clip.model import ModifiedResNet
 
 
-__all__ = [
-    'build_modified_resnet_backbone',
-    'build_modified_resnet_fpn_backbone'
-]
+__all__ = ['build_modified_resnet_backbone', 'build_modified_resnet_fpn_backbone']
 
 
 def _build_backbone(cfg):

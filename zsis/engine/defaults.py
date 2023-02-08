@@ -34,7 +34,6 @@ class DefaultPredictor(_DefaultPredictor):
             inputs['text_features'] = self._text_features
 
         predictions = self.model([inputs])[0]
-        print(predictions)
         return predictions
 
     def process_rgb(self, original_image: np.ndarray) -> torch.Tensor:

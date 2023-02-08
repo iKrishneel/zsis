@@ -25,7 +25,7 @@ class DatasetMapper(_DM):
         return ret
 
     def __call__(self, dataset_dict):
-        ddict = self._process(deepcopy(dataset_dict))        
+        ddict = self._process(deepcopy(dataset_dict))
         if len(ddict['instances'].gt_boxes) > 0:
             return ddict
         return self._process(deepcopy(dataset_dict), False)
@@ -50,7 +50,7 @@ class DatasetMapper(_DM):
         text_descriptions = self.get_text_descriptions(dataset_dict)
 
         if 'annotations' in dataset_dict:
-            self._transform_annotations(dataset_dict, transforms, image_shape)        
+            self._transform_annotations(dataset_dict, transforms, image_shape)
 
         dataset_dict['text_descriptions'] = text_descriptions
         return dataset_dict
@@ -65,7 +65,6 @@ class DatasetMapper(_DM):
 
 
 if __name__ == '__main__':
-
     import sys
     from detectron2.data.datasets import load_coco_json
     from zsis.config import get_cfg
@@ -83,4 +82,5 @@ if __name__ == '__main__':
     x = mapper(dataset_dict[2])
 
     import IPython
+
     IPython.embed()

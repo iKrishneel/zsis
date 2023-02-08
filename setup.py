@@ -21,7 +21,7 @@ install_requires = [
     'torchvision',
     'tqdm',
     'pytest',
-    'clip  @ git+https://github.com/openai/CLIP.git@3702849800aa56e2223035bccd1c6ef91c704ca8'
+    'clip  @ git+https://github.com/openai/CLIP.git@3702849800aa56e2223035bccd1c6ef91c704ca8',
 ]
 
 

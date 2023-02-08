@@ -51,7 +51,7 @@ class CustomStandardROIHeads(ROIHeads):
         keypoint_pooler: Optional[ROIPooler] = None,
         keypoint_head: Optional[nn.Module] = None,
         train_on_pred_boxes: bool = False,
-        box2box_transform = Box2BoxTransform,
+        box2box_transform=Box2BoxTransform,
         use_droploss: bool = False,
         droploss_iou_thresh: float = 1.0,
         **kwargs,
@@ -94,7 +94,7 @@ class CustomStandardROIHeads(ROIHeads):
             self.keypoint_in_features = keypoint_in_features
             self.keypoint_pooler = keypoint_pooler
             self.keypoint_head = keypoint_head
-        
+
         self.train_on_pred_boxes = train_on_pred_boxes
         self.use_droploss = use_droploss
         self.box2box_transform = box2box_transform
@@ -184,9 +184,7 @@ class CustomStandardROIHeads(ROIHeads):
             else None
         )
         if pooler_type:
-            shape = ShapeSpec(
-                channels=in_channels, width=pooler_resolution, height=pooler_resolution
-            )
+            shape = ShapeSpec(channels=in_channels, width=pooler_resolution, height=pooler_resolution)
         else:
             shape = {f: input_shape[f] for f in in_features}
         ret["mask_head"] = build_mask_head(cfg, shape)
@@ -218,9 +216,7 @@ class CustomStandardROIHeads(ROIHeads):
             else None
         )
         if pooler_type:
-            shape = ShapeSpec(
-                channels=in_channels, width=pooler_resolution, height=pooler_resolution
-            )
+            shape = ShapeSpec(channels=in_channels, width=pooler_resolution, height=pooler_resolution)
         else:
             shape = {f: input_shape[f] for f in in_features}
         ret["keypoint_head"] = build_keypoint_head(cfg, shape)
@@ -302,9 +298,13 @@ class CustomStandardROIHeads(ROIHeads):
             In inference, a list of `Instances`, the predicted instances.
         """
         features = [features[f] for f in self.box_in_features]
-        box_features = self.box_pooler(features, [x.proposal_boxes for x in proposals]) # torch.Size([512 * batch_size, 256, 7, 7])
-        box_features = self.box_head(box_features) # torch.Size([512 * batch_size, 1024])
-        predictions = self.box_predictor(box_features) # [torch.Size([512 * batch_size, 2]), torch.Size([512 * batch_size, 4])]
+        box_features = self.box_pooler(
+            features, [x.proposal_boxes for x in proposals]
+        )  # torch.Size([512 * batch_size, 256, 7, 7])
+        box_features = self.box_head(box_features)  # torch.Size([512 * batch_size, 1024])
+        predictions = self.box_predictor(
+            box_features
+        )  # [torch.Size([512 * batch_size, 2]), torch.Size([512 * batch_size, 4])]
 
         no_gt_found = False
         if self.use_droploss and self.training:
@@ -326,7 +326,9 @@ class CustomStandardROIHeads(ROIHeads):
             iou_max_list = []
             for idx, x in enumerate(proposals):
                 idx_end = idx_start + box_num_list[idx]
-                iou_max_list.append(pairwise_iou_max_scores(predictions_bbox[idx_start:idx_end], x.gt_boxes[:gt_num_list[idx]].tensor))
+                iou_max_list.append(
+                    pairwise_iou_max_scores(predictions_bbox[idx_start:idx_end], x.gt_boxes[: gt_num_list[idx]].tensor)
+                )
                 idx_start = idx_end
             iou_max = torch.cat(iou_max_list, dim=0)
 
@@ -339,11 +341,9 @@ class CustomStandardROIHeads(ROIHeads):
                 losses = self.box_predictor.losses(predictions, proposals, weights=weights.detach())
             else:
                 losses = self.box_predictor.losses(predictions, proposals)
-            if self.train_on_pred_boxes: # default is false
+            if self.train_on_pred_boxes:  # default is false
                 with torch.no_grad():
-                    pred_boxes = self.box_predictor.predict_boxes_for_gt_classes(
-                        predictions, proposals
-                    )
+                    pred_boxes = self.box_predictor.predict_boxes_for_gt_classes(predictions, proposals)
                     for proposals_per_image, pred_boxes_per_image in zip(proposals, pred_boxes):
                         proposals_per_image.proposal_boxes = Boxes(pred_boxes_per_image)
             return losses

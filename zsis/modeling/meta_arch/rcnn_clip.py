@@ -32,7 +32,7 @@ def build_clip_model(cfg):
 
     if clip_cfg.EVAL_ONLY:
         model.to(cfg.MODEL.DEVICE).eval()
-    
+
     logger.info(f"Model parameters: {np.sum([int(np.prod(p.shape)) for p in model.parameters()]):,}")
     logger.info(f"Input resolution: {model.visual.input_resolution}")
     logger.info(f"Context length: {model.context_length}")
@@ -62,7 +62,7 @@ class GeneralizedRCNNClip(GeneralizedRCNN):
         clip_model = kwargs.pop('clip_model', None)
         self.preprocessing = kwargs.pop('preprocessing', None)
         self.topk = kwargs.pop('topk', 1)
-        self.crop_scale = kwargs.pop('prob_scale', 1.0)        
+        self.crop_scale = kwargs.pop('crop_scale', 1.0)
         self.prob_scale = torch.FloatTensor([kwargs.pop('prob_scale', 100.0)]).to(torch.float16)
 
         assert clip_model is not None, 'Clip model is required'
@@ -95,7 +95,7 @@ class GeneralizedRCNNClip(GeneralizedRCNN):
         if 'text_descriptions' in batched_inputs[index]:
             for batch in batched_inputs:
                 batch.update(self.get_text_features(batch.pop('text_descriptions')))
-            
+
         text_features = [inp['text_features'] for inp in batched_inputs][index]
 
         """
@@ -107,17 +107,18 @@ class GeneralizedRCNNClip(GeneralizedRCNN):
         top_probs, top_labels = self.patchwise_similarity(
             batched_inputs[index]['original_image'], instances['instances'].get('pred_boxes'), text_features
         )
-        
+
         instances['top_probs'] = top_probs
         instances['top_labels'] = top_labels
         return [instances]
 
     def patchwise_similarity(self, image: np.ndarray, bboxes: Boxes, text_features: torch.Tensor):
+        image = image[:, :, ::-1]
         im_crops = []
         for bbox in bboxes:
             bbox = bbox.int().cpu().numpy()
             x1, y1, x2, y2 = get_roi_size(bbox, image.shape[:2], scale=self.crop_scale, use_max_len=False)
-            im_crop = self.preprocessing(Image.fromarray(image[y1: y2, x1: x2].copy()))
+            im_crop = self.preprocessing(Image.fromarray(image[y1:y2, x1:x2].copy()))
             im_crops.append(im_crop)
 
         image_features = self.clip_model.encode_image(torch.stack(im_crops).to(self.device))
@@ -126,7 +127,9 @@ class GeneralizedRCNNClip(GeneralizedRCNN):
         return top_probs, top_labels
 
     def get_text_features(self, text_descriptions: List[str]) -> Dict[str, torch.Tensor]:
-        assert isinstance(text_descriptions, (list, tuple)), f'Expects text descriptions as list but got {text_descriptions}'
+        assert isinstance(
+            text_descriptions, (list, tuple)
+        ), f'Expects text descriptions as list but got {text_descriptions}'
         for text in text_descriptions:
             assert isinstance(text, str), f'Text description must be a str but got a str: {text}'
 
@@ -155,9 +158,11 @@ class GeneralizedRCNNWithText(GeneralizedRCNN):
         """
         Forward the images through the backbone and the network heads
         """
-        
+
         images = self.preprocess_image(batched_inputs)
-        gt_instances = [x['instances'].to(self.device) for x in batched_inputs] if 'instances' in batched_inputs[0] else None
+        gt_instances = (
+            [x['instances'].to(self.device) for x in batched_inputs] if 'instances' in batched_inputs[0] else None
+        )
         features = self.backbone(images.tensor)
 
         if self.proposal_generator is not None:
@@ -166,12 +171,14 @@ class GeneralizedRCNNWithText(GeneralizedRCNN):
             assert 'proposals' in batched_inputs[0]
             proposals = [x['proposals'].to(self.device) for x in batched_inputs]
             proposal_losses = {}
-            
+
         _, detector_losses = self.roi_heads(images, features, proposals, gt_instances)
 
-        import IPython, sys; IPython.embed(header='After the detector loss'); sys.exit()
+        import IPython, sys
 
-        
+        IPython.embed(header='After the detector loss')
+        sys.exit()
+
         if self.vis_period > 0:
             storage = get_event_storage()
             if storage.iter % self.vis_period == 0:
@@ -189,7 +196,6 @@ class GeneralizedRCNNWithText(GeneralizedRCNN):
         pass
 
     def forward(self, batched_inputs: List[Dict[str, torch.Tensor]]):
-
         if not self.training:
             return self.inference(batched_inputs)
 

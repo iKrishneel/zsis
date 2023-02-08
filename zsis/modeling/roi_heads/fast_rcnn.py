@@ -28,9 +28,7 @@ class FastRCNNOutputLayers(_FastRCNNOutputLayers):
         scores, proposal_deltas = predictions
 
         # parse classification outputs
-        gt_classes = (
-            cat([p.gt_classes for p in proposals], dim=0) if len(proposals) else torch.empty(0)
-        )
+        gt_classes = cat([p.gt_classes for p in proposals], dim=0) if len(proposals) else torch.empty(0)
         _log_classification_stats(scores, gt_classes)
 
         # parse box regression outputs
@@ -58,8 +56,6 @@ class FastRCNNOutputLayers(_FastRCNNOutputLayers):
 
         losses = {
             "loss_cls": loss_cls,
-            "loss_box_reg": self.box_reg_loss(
-                proposal_boxes, gt_boxes, proposal_deltas, gt_classes
-            ),
+            "loss_box_reg": self.box_reg_loss(proposal_boxes, gt_boxes, proposal_deltas, gt_classes),
         }
         return {k: v * self.loss_weight.get(k, 1.0) for k, v in losses.items()}

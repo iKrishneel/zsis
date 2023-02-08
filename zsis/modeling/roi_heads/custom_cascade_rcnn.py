@@ -56,8 +56,7 @@ class CustomCascadeROIHeads(CustomStandardROIHeads):
                 by the previous stage as proposals and match them with ground truth.
         """
         assert "proposal_matcher" not in kwargs, (
-            "CustomCascadeROIHeads takes 'proposal_matchers=' for each stage instead "
-            "of one 'proposal_matcher='."
+            "CustomCascadeROIHeads takes 'proposal_matchers=' for each stage instead " "of one 'proposal_matcher='."
         )
         # The first matcher matches RPN proposals with ground truth, done in the base class
         kwargs["proposal_matcher"] = proposal_matchers[0]
@@ -108,9 +107,7 @@ class CustomCascadeROIHeads(CustomStandardROIHeads):
             sampling_ratio=sampling_ratio,
             pooler_type=pooler_type,
         )
-        pooled_shape = ShapeSpec(
-            channels=in_channels, width=pooler_resolution, height=pooler_resolution
-        )
+        pooled_shape = ShapeSpec(channels=in_channels, width=pooler_resolution, height=pooler_resolution)
 
         box_heads, box_predictors, proposal_matchers = [], [], []
         for match_iou, bbox_reg_weights in zip(cascade_ious, cascade_bbox_reg_weights):
@@ -193,18 +190,20 @@ class CustomCascadeROIHeads(CustomStandardROIHeads):
                         if not no_gt_found:
                             # NOTE: confidence score
                             prediction_score, predictions_delta = predictions[0], predictions[1]
-                            prediction_score = F.softmax(prediction_score, dim=1)[:,0]
+                            prediction_score = F.softmax(prediction_score, dim=1)[:, 0]
 
                             # NOTE: maximum overlapping with GT (IoU)
                             proposal_boxes = Boxes.cat([x.proposal_boxes for x in proposals])
-                            predictions_bbox = predictor.box2box_transform.apply_deltas(predictions_delta, proposal_boxes.tensor)
+                            predictions_bbox = predictor.box2box_transform.apply_deltas(
+                                predictions_delta, proposal_boxes.tensor
+                            )
                             idx_start = 0
                             iou_max_list = []
                             for idx, x in enumerate(proposals):
                                 idx_end = idx_start + box_num_list[idx]
                                 iou_max_list.append(
                                     pairwise_iou_max_scores(
-                                        predictions_bbox[idx_start:idx_end], x.gt_boxes[:gt_num_list[idx]].tensor
+                                        predictions_bbox[idx_start:idx_end], x.gt_boxes[: gt_num_list[idx]].tensor
                                     )
                                 )
                                 idx_start = idx_end
@@ -259,9 +258,7 @@ class CustomCascadeROIHeads(CustomStandardROIHeads):
         """
         num_fg_samples, num_bg_samples = [], []
         for proposals_per_image, targets_per_image in zip(proposals, targets):
-            match_quality_matrix = pairwise_iou(
-                targets_per_image.gt_boxes, proposals_per_image.proposal_boxes
-            )
+            match_quality_matrix = pairwise_iou(targets_per_image.gt_boxes, proposals_per_image.proposal_boxes)
             # proposal_labels are 0 or 1
             matched_idxs, proposal_labels = self.proposal_matchers[stage](match_quality_matrix)
             if len(targets_per_image) > 0:
@@ -271,9 +268,7 @@ class CustomCascadeROIHeads(CustomStandardROIHeads):
                 gt_boxes = targets_per_image.gt_boxes[matched_idxs]
             else:
                 gt_classes = torch.zeros_like(matched_idxs) + self.num_classes
-                gt_boxes = Boxes(
-                    targets_per_image.gt_boxes.tensor.new_zeros((len(proposals_per_image), 4))
-                )
+                gt_boxes = Boxes(targets_per_image.gt_boxes.tensor.new_zeros((len(proposals_per_image), 4)))
             proposals_per_image.gt_classes = gt_classes
             proposals_per_image.gt_boxes = gt_boxes
 
