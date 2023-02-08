@@ -17,6 +17,7 @@ from detectron2.modeling.poolers import ROIPooler
 from detectron2.modeling.roi_heads.box_head import build_box_head
 from detectron2.modeling.roi_heads.keypoint_head import build_keypoint_head
 from detectron2.modeling.roi_heads.mask_head import build_mask_head
+from detectron2.modeling.roi_heads import select_foreground_proposals
 
 from zsis.modeling.roi_heads.fast_rcnn import FastRCNNOutputLayers
 from zsis.modeling.structures import pairwise_iou_max_scores

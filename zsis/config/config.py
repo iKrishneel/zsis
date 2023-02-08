@@ -1,7 +1,21 @@
 #!/usr/bin/env python
 
-def add_clip_config(cfg):
-    cfg.MODEL.RESNETS.LAYERS = [3, 4, 6, 3]
+from detectron2.config import CfgNode as CN
+from detectron2_timm.config.defaults import _C as _c
 
-    cfg.MODEL.ROI_HEADS.USE_DROPLOSS = False
-    cfg.MODEL.ROI_HEADS.DROPLOSS_IOU_THRESH = 0.0
+
+_C = _c.clone()
+# resnet layers for modified resnet architecture
+_C.MODEL.RESNETS.LAYERS = [3, 4, 6, 3]
+
+# roi heads
+_C.MODEL.ROI_HEADS.USE_DROPLOSS = False
+_C.MODEL.ROI_HEADS.DROPLOSS_IOU_THRESH = 0.0
+
+# clip params
+_C.MODEL.CLIP = CN()
+_C.MODEL.CLIP.ARCHITECTURE = ''
+_C.MODEL.CLIP.TOPK = 5
+_C.MODEL.CLIP.PROB_SCALE = 100.0
+_C.MODEL.CLIP.CROP_SCALE = 1.2
+_C.MODEL.CLIP.EVAL_ONLY = True

@@ -6,6 +6,7 @@ import torch
 from detectron2.layers import cat, cross_entropy
 from detectron2.structures import Instances
 
+from detectron2.modeling.roi_heads.fast_rcnn import _log_classification_stats
 from detectron2.modeling.roi_heads import FastRCNNOutputLayers as _FastRCNNOutputLayers
 
 
