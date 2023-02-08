@@ -23,7 +23,7 @@ from detectron2.modeling.roi_heads.fast_rcnn import fast_rcnn_inference
 from zsis.modeling.structures import pairwise_iou_max_scores
 
 from .fast_rcnn import FastRCNNOutputLayers
-from .roi_heads import CustomStandardROIHeads
+from .custom_standard_roi_head import CustomStandardROIHeads
 
 
 @ROI_HEADS_REGISTRY.register()

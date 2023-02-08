@@ -8,7 +8,7 @@ from detectron2.data.detection_utils import read_image
 from detectron2.utils.visualizer import ColorMode, Visualizer
 
 from zsis.config import get_cfg
-from zsis.modeling import GeneralizedRCNNClip
+from zsis.modeling import GeneralizedRCNNClip  # NOQA: F401
 from zsis.engine import DefaultPredictor
 
 import matplotlib.pyplot as plt

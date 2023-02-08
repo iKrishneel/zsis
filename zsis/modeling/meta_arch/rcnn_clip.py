@@ -14,6 +14,7 @@ from detectron2.modeling.meta_arch import META_ARCH_REGISTRY, GeneralizedRCNN
 from detectron2.utils.logger import setup_logger
 
 import clip
+from clip.model import AttentionPool2d, Transformer
 
 
 __all__ = ['GeneralizedRCNNWithText', 'GeneralizedRCNNClip']
@@ -22,8 +23,28 @@ __all__ = ['GeneralizedRCNNWithText', 'GeneralizedRCNNClip']
 logger = setup_logger(name='clip')
 
 
-def build_text_encoder(cfg):
-    return nn.Identity()
+def build_attention_mask(cfg) -> torch.Tensor:
+    context_length = cfg.MODEL.CLIP.TEXT_ENCODER.CONTEXT_LENGTH
+    mask = torch.empty(context_length, context_length)
+    mask.fill_(float("-inf"))
+    mask.triu_(1)  # zero out the lower diagonal
+    return mask
+
+
+def build_text_encoder(cfg) -> Transformer:
+    transformer_width = cfg.MODEL.CLIP.TEXT_ENCODER.TRANSFORMER_WIDTH
+    transformer_layers = cfg.MODEL.CLIP.TEXT_ENCODER.TRANSFORMER_LAYERS
+    transformer_heads = cfg.MODEL.CLIP.TEXT_ENCODER.TRANSFORMER_HEADS
+    transformer = Transformer(
+        width=transformer_width, layers=transformer_layers, heads=transformer_heads, attn_mask=build_attention_mask(cfg)
+    )
+
+    if cfg.MODEL.CLIP.TEXT_ENCODER.FROZEN:
+        logger.info('Full text encoder freeze')
+        for param in transformer.parameters():
+            param.requires_grad_(False)
+
+    return transformer
 
 
 def build_clip_model(cfg):
@@ -122,6 +143,8 @@ class GeneralizedRCNNClip(GeneralizedRCNN):
             im_crops.append(im_crop)
 
         image_features = self.clip_model.encode_image(torch.stack(im_crops).to(self.device))
+        image_features /= image_features.norm(dim=-1, keepdim=True)
+
         text_probs = (self.prob_scale.to(self.device) * image_features @ text_features.T).softmax(dim=-1)
         top_probs, top_labels = text_probs.topk(self.topk, dim=1)
         return top_probs, top_labels
@@ -147,6 +170,8 @@ class GeneralizedRCNNWithText(GeneralizedRCNN):
         assert text_encoder is not None, 'Text encoding model is required'
         super(GeneralizedRCNNWithText, self).__init__(**kwargs)
         self.text_encoder = text_encoder
+
+        # self.attenpool = AttentionPool2d()
 
     @classmethod
     def from_config(cls, cfg) -> Dict[str, Any]:
@@ -174,10 +199,7 @@ class GeneralizedRCNNWithText(GeneralizedRCNN):
 
         _, detector_losses = self.roi_heads(images, features, proposals, gt_instances)
 
-        import IPython, sys
-
-        IPython.embed(header='After the detector loss')
-        sys.exit()
+        import IPython, sys; IPython.embed(header='Embedding in Forward'); sys.exit()
 
         if self.vis_period > 0:
             storage = get_event_storage()
@@ -198,9 +220,9 @@ class GeneralizedRCNNWithText(GeneralizedRCNN):
     def forward(self, batched_inputs: List[Dict[str, torch.Tensor]]):
         if not self.training:
             return self.inference(batched_inputs)
-
+        
         image_losses = self.forward_images(batched_inputs)
-        text_losses = self.text_encoder(batched_inputs)
+        # text_losses = self.text_encoder(batched_inputs)
 
     def inference(
         self,
