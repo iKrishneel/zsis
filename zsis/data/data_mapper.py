@@ -3,6 +3,7 @@
 from copy import deepcopy
 import os
 from typing import Any, Dict, List
+from dataclasses import dataclass, field
 
 import numpy as np
 import torch
@@ -11,17 +12,21 @@ from detectron2.data import detection_utils
 from detectron2.data import transforms as T
 from detectron2.data.dataset_mapper import DatasetMapper as _DM
 
+import clip
+
 
 class DatasetMapper(_DM):
     @configurable
     def __init__(self, *args, **kwargs):
+        self.is_class_agnostic = kwargs.pop('is_class_agnostic')
         super(DatasetMapper, self).__init__(*args, **kwargs)
 
-        self.label_name_map = {0: 'bean', 1: 'leaf'}
+        self.label_name_map = {0: 'bean', 1: 'leaf', 2: 'bean', 7: 'leaf'}
 
     @classmethod
     def from_config(cls, cfg, is_train: bool = True) -> Dict[str, Any]:
         ret = _DM.from_config(cfg, is_train)
+        ret['is_class_agnostic'] = cfg.MODEL.ROI_BOX_HEAD.CLS_AGNOSTIC_BBOX_REG
         return ret
 
     def __call__(self, dataset_dict):
@@ -47,21 +52,34 @@ class DatasetMapper(_DM):
                 dataset_dict.pop('key', None)
             return dataset_dict
 
-        text_descriptions = self.get_text_descriptions(dataset_dict)
+        text_descriptions, class_labels = self.get_instance_meta_data(dataset_dict)
 
         if 'annotations' in dataset_dict:
             self._transform_annotations(dataset_dict, transforms, image_shape)
 
-        dataset_dict['text_descriptions'] = text_descriptions
+        dataset_dict['instances'].set('gt_class_labels', torch.Tensor(class_labels))
+        dataset_dict['instances'].set('gt_text_tokens', clip.tokenize(text_descriptions))
+        dataset_dict['gt_descriptions'] = text_descriptions
         return dataset_dict
 
-    def get_text_descriptions(self, dataset_dict) -> List[str]:
+    def get_instance_meta_data(self, dataset_dict) -> List[List[Any]]:
         text_descriptions = []
+        class_labels = []
+
+        key = 'category_id'
         for annotation in dataset_dict['annotations']:
-            text = self.label_name_map[annotation['category_id']]
+            text = self.label_name_map[annotation[key]]
+
+            # textual description of the image roi
             description = f'This is a image of a {text}'
             text_descriptions.append(description)
-        return text_descriptions
+            class_labels.append(annotation[key])
+
+            # for class agnostic segmentation, it will be binary classification bg / fg
+            if self.is_class_agnostic:
+                annotation[key] = 0
+
+        return text_descriptions, class_labels
 
 
 if __name__ == '__main__':

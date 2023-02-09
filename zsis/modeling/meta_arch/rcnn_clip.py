@@ -288,14 +288,13 @@ class GeneralizedRCNNWithText(GeneralizedRCNN):
         losses = {}
         losses.update(detector_losses)
         losses.update(proposal_losses)
-        return losses, roi_features
+        return losses, roi_features, proposals
 
-    def forward_text(self, batched_inputs: List[Dict[str, torch.Tensor]]) -> Dict[str, Any]:
+    def forward_text(self, proposals: List[Dict[str, torch.Tensor]]) -> Dict[str, Any]:
         """
         Forward the text descriptions through the text encoding network
         """
-        text_descriptions = [text for input in batched_inputs for text in input['text_descriptions']]
-        text_tokens = clip.tokenize(text_descriptions).to(self.device)
+        text_tokens = torch.cat([p.get('gt_text_tokens') for p in proposals])
         text_features = self.transformer(text_tokens)
 
         # TODO: Implement loss function
@@ -306,8 +305,8 @@ class GeneralizedRCNNWithText(GeneralizedRCNN):
         if not self.training:
             return self.inference(batched_inputs)
 
-        image_losses, roi_features = self.forward_images(batched_inputs)
-        text_losses, text_features = self.forward_text(batched_inputs)
+        image_losses, roi_features, proposals = self.forward_images(batched_inputs)
+        text_losses, text_features = self.forward_text(proposals)
 
         # l2 normalization
         roi_features, text_features = [l2_norm(f) for f in [roi_features, text_features]]
@@ -318,9 +317,6 @@ class GeneralizedRCNNWithText(GeneralizedRCNN):
         logits_per_text = logits_per_image.t()
 
         losses = {**self.losses(logits_per_image), **image_losses, **text_losses}
-
-        import IPython, sys; IPython.embed(header="Embedded in Forward"); sys.exit()
-        
         return losses
 
     def losses(self, logits: torch.Tensor) -> Dict[str, torch.Tensor]:
