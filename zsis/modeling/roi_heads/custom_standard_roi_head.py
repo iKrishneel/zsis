@@ -37,7 +37,7 @@ class CustomStandardROIHeads(StandardROIHeads):
         ret = super().from_config(cfg, input_shape)
         ret['use_droploss'] = True
         ret['droploss_iou_thresh'] = cfg.MODEL.ROI_HEADS.DROPLOSS_IOU_THRESH
-        ret['box2box_transform'] = Box2BoxTransform(weights=cfg.MODEL.ROI_BOX_HEAD.BBOX_REG_WEIGHTS)        
+        ret['box2box_transform'] = Box2BoxTransform(weights=cfg.MODEL.ROI_BOX_HEAD.BBOX_REG_WEIGHTS)
         return ret
 
     def _forward_box(self, features: Dict[str, torch.Tensor], proposals: List[Instances]):
