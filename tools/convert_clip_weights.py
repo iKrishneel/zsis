@@ -11,7 +11,8 @@ from collections import OrderedDict
 @click.command()
 @click.option('--clip_model', type=str, required=True)
 @click.option('--save_path', type=str, default=os.getcwd())
-def main(clip_model: str, save_path: str):
+@click.option('--fpn/--no-fpn', type=bool, default=False)
+def main(clip_model: str, save_path: str, fpn: bool):
     assert clip_model in clip.available_models(), f'{clip_model} not found, available are {clip.available_models()}'
 
     print(f'loading {clip_model}...')
@@ -32,11 +33,15 @@ def main(clip_model: str, save_path: str):
     for key in model.state_dict().keys():
         if 'transformer' in key:
             new_key = key
+        elif 'visual' in key:
+            if 'attn' in key:
+                new_key = key.replace('visual.', '')
+            else:
+                name = 'backbone.bottom_up.model.model' if fpn else 'backbone.model.model'
+                new_key = key.replace('visual', name)
         elif any([name in key for name in param_names]):
             new_key = 'transformer.' + key
             # new_key = key
-        elif 'visual' in key:
-            new_key = key.replace('visual', 'backbone.bottom_up.model.model')
         else:
             print(f'\033[031mUnknown key {key} \033[0m')
             continue
