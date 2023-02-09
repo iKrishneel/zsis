@@ -65,11 +65,12 @@ def build_clip_model(cfg):
     if clip_cfg.EVAL_ONLY:
         model.to(cfg.MODEL.DEVICE).eval()
 
-    logger.info(f"Model parameters: {np.sum([int(np.prod(p.shape)) for p in model.parameters()]):,}")
-    logger.info(f"Input resolution: {model.visual.input_resolution}")
-    logger.info(f"Context length: {model.context_length}")
-    logger.info(f"Vocab size: {model.vocab_size}")
+    logger.info(f'Model parameters: {np.sum([int(np.prod(p.shape)) for p in model.parameters()]):,}')
+    logger.info(f'Input resolution: {model.visual.input_resolution}')
+    logger.info(f'Context length: {model.context_length}')
+    logger.info(f'Vocab size: {model.vocab_size}')
 
+    logger.warn('Changing of floating precision is currently not supported!')
     return {'clip_model': model, 'preprocessing': preprocessing}
 
 
@@ -242,7 +243,7 @@ class GeneralizedRCNNWithText(GeneralizedRCNN):
         assert text_encoder is not None, 'Text encoding model is required'
         super(GeneralizedRCNNWithText, self).__init__(**kwargs)
 
-        self.text_encoder = text_encoder
+        self.transformer = text_encoder
         self.roi_pooler = roi_pooler
         self.attnpool = attnpool
 
@@ -295,7 +296,7 @@ class GeneralizedRCNNWithText(GeneralizedRCNN):
         """
         text_descriptions = [text for input in batched_inputs for text in input['text_descriptions']]
         text_tokens = clip.tokenize(text_descriptions).to(self.device)
-        text_features = self.text_encoder(text_tokens)
+        text_features = self.transformer(text_tokens)
 
         # TODO: Implement loss function
         losses = {}
@@ -312,11 +313,14 @@ class GeneralizedRCNNWithText(GeneralizedRCNN):
         roi_features, text_features = [l2_norm(f) for f in [roi_features, text_features]]
 
         # cosine similarity as logits
-        logit_scale = self.text_encoder.logit_scale.exp()
+        logit_scale = self.transformer.logit_scale.exp()
         logits_per_image = logit_scale * roi_features @ text_features.t()
         logits_per_text = logits_per_image.t()
 
         losses = {**self.losses(logits_per_image), **image_losses, **text_losses}
+
+        import IPython, sys; IPython.embed(header="Embedded in Forward"); sys.exit()
+        
         return losses
 
     def losses(self, logits: torch.Tensor) -> Dict[str, torch.Tensor]:
