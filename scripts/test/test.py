@@ -29,12 +29,13 @@ def main(config_file, image, weights=None):
     if weights is not None:
         cfg.MODEL.WEIGHTS = weights
 
-    image = read_image(image, 'BGR')
+    image = read_image(image, 'RGB')
 
     predictor = DefaultPredictor(cfg)
     labels = [
         'fish',
-        'leaf',
+        'white leaf',
+        'green leaf',
         'white bean',
         'red bean',
         'cashew nut',
@@ -42,7 +43,6 @@ def main(config_file, image, weights=None):
         'broccoli',
         'plate',
         'yellowish bean',
-        'broccoli',
         'greenish bean',
     ]
     text_descriptions = [f'This is a photo of a {label}' for label in labels]

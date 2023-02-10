@@ -158,6 +158,7 @@ class GeneralizedRCNNClip(GeneralizedRCNN):
         self.topk = kwargs.pop('topk', 1)
         self.crop_scale = kwargs.pop('crop_scale', 1.0)
         self.prob_scale = torch.FloatTensor([kwargs.pop('prob_scale', 100.0)]).to(torch.float16)
+        self.image_format = kwargs.pop('image_format')
 
         assert clip_model is not None, 'Clip model is required'
         assert isinstance(self.topk, int) and self.topk > 0
@@ -173,6 +174,7 @@ class GeneralizedRCNNClip(GeneralizedRCNN):
         attrs['topk'] = cfg.MODEL.CLIP.TOPK
         attrs['prob_scale'] = cfg.MODEL.CLIP.PROB_SCALE
         attrs['crop_scale'] = cfg.MODEL.CLIP.CROP_SCALE
+        attrs['image_format'] = cfg.INPUT.FORMAT
         return attrs
 
     def forward(self, batched_inputs: List[Dict[str, torch.Tensor]]):
@@ -207,7 +209,9 @@ class GeneralizedRCNNClip(GeneralizedRCNN):
         return [instances]
 
     def patchwise_similarity(self, image: np.ndarray, bboxes: Boxes, text_features: torch.Tensor):
-        image = image[:, :, ::-1]
+        # clip takes takes RGB as input
+        if self.image_format == 'BGR':
+            image = image[:, :, ::-1]
         im_crops = []
         for bbox in bboxes:
             bbox = bbox.int().cpu().numpy()
@@ -216,7 +220,7 @@ class GeneralizedRCNNClip(GeneralizedRCNN):
             im_crops.append(im_crop)
 
         image_features = l2_norm(self.clip_model.encode_image(torch.stack(im_crops).to(self.device)), dim=-1)
-        text_probs = (self.prob_scale.to(self.device) * image_features @ text_features.T).softmax(dim=-1)
+        text_probs = (self.prob_scale.to(self.device) * image_features @ text_features.t()).softmax(dim=-1)
         top_probs, top_labels = text_probs.topk(self.topk, dim=1)
         return top_probs, top_labels
 
