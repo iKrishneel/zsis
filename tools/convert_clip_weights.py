@@ -6,6 +6,7 @@ import clip
 import numpy as np
 import torch
 from collections import OrderedDict
+from tabulate import tabulate
 
 
 @click.command()
@@ -15,22 +16,30 @@ from collections import OrderedDict
 def main(clip_model: str, save_path: str, fpn: bool):
     assert clip_model in clip.available_models(), f'{clip_model} not found, available are {clip.available_models()}'
 
-    print(f'loading {clip_model}...')
-    model, _ = clip.load(clip_model)
+    filename = os.path.join(os.environ['HOME'], f'.cache/clip/{clip_model}.pt')
+    if os.path.isfile(filename):
+        print(f'Loading CLIP weights from {filename}')
+        state_dict = torch.jit.load(filename, map_location='cpu').state_dict()
+    else:
+        print(f'Loading {clip_model}')
+        model, _ = clip.load(clip_model)
+        state_dict = model.state_dict()
 
-    input_resolution = model.visual.input_resolution
-    context_length = model.context_length
-    vocab_size = model.vocab_size
+        input_resolution = model.visual.input_resolution
+        context_length = model.context_length
+        vocab_size = model.vocab_size
 
-    print("Model parameters:", f"{np.sum([int(np.prod(p.shape)) for p in model.parameters()]):,}")
-    print("Input resolution:", input_resolution)
-    print("Context length:", context_length)
-    print("Vocab size:", vocab_size)
+        print("Model parameters:", f"{np.sum([int(np.prod(p.shape)) for p in model.parameters()]):,}")
+        print("Input resolution:", input_resolution)
+        print("Context length:", context_length)
+        print("Vocab size:", vocab_size)
 
     print('converting weights...')
     param_names = ['token_embedding', 'positional_embedding', 'text_projection', 'logit_scale', 'ln_final']
     new_state_dict = OrderedDict()
-    for key in model.state_dict().keys():
+
+    keys = []
+    for key in state_dict.keys():
         if 'transformer' in key:
             new_key = key
         elif 'visual' in key:
@@ -46,8 +55,10 @@ def main(clip_model: str, save_path: str, fpn: bool):
             print(f'\033[031mUnknown key {key} \033[0m')
             continue
 
-        new_state_dict[new_key] = model.state_dict()[key]
+        keys.append([key, new_key])
+        new_state_dict[new_key] = state_dict[key].float()
 
+    print(tabulate(keys, tablefmt='grid'))
     if not '.pth' in save_path:
         save_path = os.path.join(save_path, f'{clip_model}.pth')
 
