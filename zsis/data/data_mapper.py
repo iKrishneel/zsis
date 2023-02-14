@@ -5,6 +5,7 @@ import os
 from typing import Any, Dict, List
 from dataclasses import dataclass, field
 
+import json
 import numpy as np
 import torch
 from detectron2.config import configurable
@@ -63,15 +64,30 @@ class DatasetMapper(_DM):
         return dataset_dict
 
     def get_instance_meta_data(self, dataset_dict) -> List[List[Any]]:
+        try:
+            ret = load_caption_from_file(dataset_dict)
+        except (FileNotFoundError, AssertionError):
+            ret = create_synthetic_caption(dataset_dict)
+        return ret
+
+    def create_synthetic_caption(self, dataset_dict) -> List[List[Any]]:
         text_descriptions = []
         class_labels = []
 
+        # LOAD CAPTION FROM FILE
+        caption_data = self.load_caption_from_file(dataset_dict)
+
         key = 'category_id'
-        for annotation in dataset_dict['annotations']:
+        for i, annotation in enumerate(dataset_dict['annotations']):
             text = self.label_name_map[annotation[key]]
 
-            # textual description of the image roi
             description = f'This is a image of a {text}'
+            for cap in caption_data['captions']:
+                if annotation['bbox'] == cap['bbox']:
+                    description = cap['caption']
+                    break
+
+            # textual description of the image roi
             text_descriptions.append(description)
             class_labels.append(annotation[key])
 
@@ -80,6 +96,19 @@ class DatasetMapper(_DM):
                 annotation[key] = 0
 
         return text_descriptions, class_labels
+
+    def load_caption_from_file(self, dataset_dict: Dict[str, Any]) -> Dict[str, Any]:
+        file_name = dataset_dict['file_name'].split(os.sep)[-1]
+        ext = file_name.split('.')[1]
+        file_name = file_name.replace(ext, 'json')
+        root = os.path.join(
+            f'{os.sep}'.join(dataset_dict['file_name'].split(os.sep)[:-3]), 'caption/train2017/{file_name}'
+        )
+        with open(root, 'r') as fp:
+            data = json.load(fp)
+
+        assert data['image_id'] == dataset_dict['image_id'], f'The image_id is not same {root}'
+        return data
 
 
 if __name__ == '__main__':
