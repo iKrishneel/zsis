@@ -57,10 +57,16 @@ def get_model(device):
     return model
 
 
-def process(model, data_dicts, write_dir):
+def process(model, data_dicts, write_dir, override: bool = False):
     for i, data_dict in enumerate(tqdm(data_dicts)):
         filename = data_dict['file_name']
         annotations = data_dict['annotations']
+
+        image_id = data_dict['image_id']
+        json_filename = f'{osp.join(write_dir, str(image_id).zfill(12))}.json'
+
+        if not override and osp.isfile(json_filename):
+            continue
 
         image = read_image(file_name=filename)
         im_crops = []
@@ -70,6 +76,7 @@ def process(model, data_dicts, write_dir):
             bboxes.append(annotation['bbox'])
 
             x, y, w, h = np.intp([x, y, w, h])
+            w, h = np.max([[w, 1], [h, 1]], axis=1)
             im_crop = image[y : y + h, x : x + w].copy()
             im_crops.append(im_crop)
 
@@ -81,9 +88,7 @@ def process(model, data_dicts, write_dir):
             'captions': [{'bbox': bbox, 'caption': cap} for cap, bbox in zip(captions, bboxes)],
         }
 
-        image_id = data_dict['image_id']
-        filename = f'{osp.join(write_dir, str(image_id).zfill(12))}.json'
-        write_json(filename, caption_dicts)
+        write_json(json_filename, caption_dicts)
 
 
 @click.command()
@@ -93,7 +98,9 @@ def process(model, data_dicts, write_dir):
 @click.option('--root', type=str, required=False, default='/workspace/Downloads/datasets/coco/')
 @click.option('--year', type=str, default='2017')
 @click.option('--type', type=str, default='train')
-def main(start, end, device, root, year, type):
+@click.option('--override/--no-override', type=bool, default=False)
+def main(start, end, device, root, year, type, override):
+
     data_type = f'{type}{year}'
     ann_file = '{}/annotations/instances_{}.json'.format(root, data_type)
 
@@ -113,7 +120,7 @@ def main(start, end, device, root, year, type):
     print("loading model")
     model = get_model(device=device)
 
-    process(model, data_dicts[start:end], write_dir)
+    process(model, data_dicts[start:end], write_dir, override)
 
 
 if __name__ == '__main__':
