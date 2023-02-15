@@ -201,11 +201,14 @@ class CustomCascadeROIHeads(CustomStandardROIHeads):
                             iou_max_list = []
                             for idx, x in enumerate(proposals):
                                 idx_end = idx_start + box_num_list[idx]
-                                iou_max_list.append(
-                                    pairwise_iou_max_scores(
-                                        predictions_bbox[idx_start:idx_end], x.gt_boxes[: gt_num_list[idx]].tensor
+                                try:
+                                    iou_max_list.append(
+                                        pairwise_iou_max_scores(
+                                            predictions_bbox[idx_start:idx_end], x.gt_boxes[: gt_num_list[idx]].tensor
+                                        )
                                     )
-                                )
+                                except IndexError:
+                                    import IPython; IPython.embed(header="Embedding in Custom")
                                 idx_start = idx_end
                             iou_max = torch.cat(iou_max_list, dim=0)
 

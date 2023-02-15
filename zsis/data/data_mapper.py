@@ -64,11 +64,7 @@ class DatasetMapper(_DM):
         return dataset_dict
 
     def get_instance_meta_data(self, dataset_dict) -> List[List[Any]]:
-        try:
-            ret = load_caption_from_file(dataset_dict)
-        except (FileNotFoundError, AssertionError):
-            ret = create_synthetic_caption(dataset_dict)
-        return ret
+        return self.create_synthetic_caption(dataset_dict)
 
     def create_synthetic_caption(self, dataset_dict) -> List[List[Any]]:
         text_descriptions = []
@@ -98,6 +94,9 @@ class DatasetMapper(_DM):
         return text_descriptions, class_labels
 
     def load_caption_from_file(self, dataset_dict: Dict[str, Any]) -> Dict[str, Any]:
+        # TEMP
+        return {'captions': []}
+        
         file_name = dataset_dict['file_name'].split(os.sep)[-1]
         ext = file_name.split('.')[1]
         file_name = file_name.replace(ext, 'json')

@@ -22,6 +22,7 @@ install_requires = [
     'tqdm',
     'pytest',
     'clip  @ git+https://github.com/openai/CLIP.git@3702849800aa56e2223035bccd1c6ef91c704ca8',
+    'detectron2_timm @git+https://github.com/iKrishneel/detectron2_timm@master',
 ]
 
 

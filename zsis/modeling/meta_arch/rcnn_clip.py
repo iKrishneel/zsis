@@ -114,6 +114,8 @@ class TextTransformer(Transformer):
         self.ln_final = LayerNorm(transformer_width)
         self.initialize_parameters()
 
+        self._embed_dim = embed_dim
+
     def initialize_parameters(self):
         nn.init.normal_(self.token_embedding.weight, std=0.02)
         nn.init.normal_(self.positional_embedding, std=0.01)
@@ -145,7 +147,11 @@ class TextTransformer(Transformer):
         return x
 
     @property
-    def dtype(self):
+    def embed_dim(self) -> int:
+        return self._embed_dim
+
+    @property
+    def dtype(self) -> str:
         return self.resblocks[0].attn.out_proj.weight.dtype
 
 
@@ -251,6 +257,9 @@ class GeneralizedRCNNWithText(GeneralizedRCNN):
         self.roi_pooler = roi_pooler
         self.attnpool = attnpool
 
+        embed_dim = self.transformer.embed_dim
+        self.text_proj = nn.Linear(embed_dim, embed_dim)
+
     @classmethod
     def from_config(cls, cfg) -> Dict[str, Any]:
         attrs = super().from_config(cfg)
@@ -278,7 +287,10 @@ class GeneralizedRCNNWithText(GeneralizedRCNN):
             proposals = [x['proposals'].to(self.device) for x in batched_inputs]
             proposal_losses = {}
 
-        _, detector_losses = self.roi_heads(images, features, proposals, gt_instances)
+        try:
+            _, detector_losses = self.roi_heads(images, features, proposals, gt_instances)
+        except IndexError:
+            import IPython, sys; IPython.embed(header='Embedded'); sys.exit()
 
         # roi pool the positive region features
         roi_features, proposals = self.roi_pooler(images, features, proposals, gt_instances)
@@ -289,9 +301,7 @@ class GeneralizedRCNNWithText(GeneralizedRCNN):
             if storage.iter % self.vis_period == 0:
                 self.visualize_training(batched_inputs, proposals)
 
-        losses = {}
-        losses.update(detector_losses)
-        losses.update(proposal_losses)
+        losses = {**detector_losses, **proposal_losses}
         return losses, roi_features, proposals
 
     def forward_text(self, proposals: List[Dict[str, torch.Tensor]]) -> Dict[str, Any]:
@@ -300,6 +310,7 @@ class GeneralizedRCNNWithText(GeneralizedRCNN):
         """
         text_tokens = torch.cat([p.get('gt_text_tokens') for p in proposals])
         text_features = self.transformer(text_tokens)
+        text_features = self.text_proj(text_features)
 
         # TODO: Implement loss function
         losses = {}
@@ -319,7 +330,7 @@ class GeneralizedRCNNWithText(GeneralizedRCNN):
         logit_scale = self.transformer.logit_scale.exp()
         logits_per_image = logit_scale * roi_features @ text_features.t()
         logits_per_text = logits_per_image.t()
-
+        
         losses = {**self.losses(logits_per_image), **image_losses, **text_losses}
         return losses
 
