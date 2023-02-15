@@ -3,13 +3,10 @@
 import open_clip
 import torch
 from PIL import Image
-from copy import deepcopy
 
 import os
 import os.path as osp
-from pycocotools.coco import COCO
 import numpy as np
-import matplotlib.pyplot as plt
 from tqdm import tqdm
 import json
 
