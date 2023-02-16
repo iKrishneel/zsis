@@ -20,6 +20,7 @@ class DatasetMapper(_DM):
     @configurable
     def __init__(self, *args, **kwargs):
         self.is_class_agnostic = kwargs.pop('is_class_agnostic')
+        self.with_text = kwargs.pop('with_text', False)
         super(DatasetMapper, self).__init__(*args, **kwargs)
 
         self.label_name_map = {0: 'bean', 1: 'leaf', 2: 'bean', 7: 'leaf'}
@@ -28,13 +29,12 @@ class DatasetMapper(_DM):
     def from_config(cls, cfg, is_train: bool = True) -> Dict[str, Any]:
         ret = _DM.from_config(cfg, is_train)
         ret['is_class_agnostic'] = cfg.MODEL.ROI_BOX_HEAD.CLS_AGNOSTIC_BBOX_REG
+        ret['with_text'] = cfg.MODEL.META_ARCHITECTURE in ['GeneralizedRCNNWithText', 'GeneralizedRCNNClip']
         return ret
 
     def __call__(self, dataset_dict):
         ddict = self._process(deepcopy(dataset_dict))
-        if len(ddict['instances'].gt_boxes) > 0:
-            return ddict
-        return self._process(deepcopy(dataset_dict), False)
+        return ddict
 
     def _process(self, dataset_dict: Dict[str, Any]):
         image = detection_utils.read_image(dataset_dict['file_name'], format=self.image_format)
@@ -58,9 +58,11 @@ class DatasetMapper(_DM):
         if 'annotations' in dataset_dict:
             self._transform_annotations(dataset_dict, transforms, image_shape)
 
-        dataset_dict['instances'].set('gt_class_labels', torch.Tensor(class_labels))
-        dataset_dict['instances'].set('gt_text_tokens', clip.tokenize(text_descriptions))
-        dataset_dict['gt_descriptions'] = text_descriptions
+        if self.with_text:
+            dataset_dict['instances'].set('gt_class_labels', torch.Tensor(class_labels))
+            dataset_dict['instances'].set('gt_text_tokens', clip.tokenize(text_descriptions))
+            dataset_dict['gt_descriptions'] = text_descriptions
+
         return dataset_dict
 
     def get_instance_meta_data(self, dataset_dict) -> List[List[Any]]:
@@ -75,17 +77,17 @@ class DatasetMapper(_DM):
 
         key = 'category_id'
         for i, annotation in enumerate(dataset_dict['annotations']):
-            text = self.label_name_map[annotation[key]]
+            if self.with_text:
+                text = self.label_name_map[annotation[key]]
+                description = f'This is a image of a {text}'
+                for cap in caption_data['captions']:
+                    if annotation['bbox'] == cap['bbox']:
+                        description = cap['caption']
+                        break
 
-            description = f'This is a image of a {text}'
-            for cap in caption_data['captions']:
-                if annotation['bbox'] == cap['bbox']:
-                    description = cap['caption']
-                    break
-
-            # textual description of the image roi
-            text_descriptions.append(description)
-            class_labels.append(annotation[key])
+                # textual description of the image roi
+                text_descriptions.append(description)
+                class_labels.append(annotation[key])
 
             # for class agnostic segmentation, it will be binary classification bg / fg
             if self.is_class_agnostic:

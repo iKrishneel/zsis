@@ -287,10 +287,10 @@ class GeneralizedRCNNWithText(GeneralizedRCNN):
             proposals = [x['proposals'].to(self.device) for x in batched_inputs]
             proposal_losses = {}
 
-        try:
-            _, detector_losses = self.roi_heads(images, features, proposals, gt_instances)
-        except IndexError:
-            import IPython, sys; IPython.embed(header='Embedded'); sys.exit()
+        # try:
+        _, detector_losses = self.roi_heads(images, features, proposals, gt_instances)
+        # except IndexError:
+        # import IPython, sys; IPython.embed(header='Embedded'); sys.exit()
 
         # roi pool the positive region features
         roi_features, proposals = self.roi_pooler(images, features, proposals, gt_instances)
@@ -335,7 +335,7 @@ class GeneralizedRCNNWithText(GeneralizedRCNN):
         return losses
 
     def losses(self, logits: torch.Tensor) -> Dict[str, torch.Tensor]:
-        return {'loss_clip': (self.cross_entropy(logits, 0) + self.cross_entropy(logits, 1)) / 2.0}
+        return {'loss_clip': ((self.cross_entropy(logits, 0) + self.cross_entropy(logits, 1)) / 2.0) * 1.0}
 
     def cross_entropy(self, logits: torch.Tensor, dim: int) -> torch.Tensor:
         log_probs = nn.functional.log_softmax(logits, dim=dim)
