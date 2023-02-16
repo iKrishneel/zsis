@@ -23,7 +23,7 @@ class DatasetMapper(_DM):
         self.with_text = kwargs.pop('with_text', False)
         super(DatasetMapper, self).__init__(*args, **kwargs)
 
-        self.label_name_map = {0: 'bean', 1: 'leaf', 2: 'bean', 7: 'leaf'}
+        self.label_name_map = {0: 'bean', 1: 'olive', 2: 'leaf'}
 
     @classmethod
     def from_config(cls, cfg, is_train: bool = True) -> Dict[str, Any]:
@@ -74,7 +74,6 @@ class DatasetMapper(_DM):
 
         # LOAD CAPTION FROM FILE
         caption_data = self.load_caption_from_file(dataset_dict)
-
         key = 'category_id'
         for i, annotation in enumerate(dataset_dict['annotations']):
             if self.with_text:
@@ -98,7 +97,7 @@ class DatasetMapper(_DM):
     def load_caption_from_file(self, dataset_dict: Dict[str, Any]) -> Dict[str, Any]:
         # TEMP
         return {'captions': []}
-        
+
         file_name = dataset_dict['file_name'].split(os.sep)[-1]
         ext = file_name.split('.')[1]
         file_name = file_name.replace(ext, 'json')

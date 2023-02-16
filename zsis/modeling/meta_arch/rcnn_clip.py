@@ -287,13 +287,11 @@ class GeneralizedRCNNWithText(GeneralizedRCNN):
             proposals = [x['proposals'].to(self.device) for x in batched_inputs]
             proposal_losses = {}
 
-        # try:
         _, detector_losses = self.roi_heads(images, features, proposals, gt_instances)
-        # except IndexError:
-        # import IPython, sys; IPython.embed(header='Embedded'); sys.exit()
 
         # roi pool the positive region features
         roi_features, proposals = self.roi_pooler(images, features, proposals, gt_instances)
+        del features
         roi_features = self.attnpool(roi_features)
 
         if self.vis_period > 0:
@@ -329,9 +327,12 @@ class GeneralizedRCNNWithText(GeneralizedRCNN):
         # cosine similarity as logits
         logit_scale = self.transformer.logit_scale.exp()
         logits_per_image = logit_scale * roi_features @ text_features.t()
-        logits_per_text = logits_per_image.t()
-        
+        # logits_per_text = logits_per_image.t()
+
         losses = {**self.losses(logits_per_image), **image_losses, **text_losses}
+
+        del roi_features, text_features, proposals, logits_per_image
+
         return losses
 
     def losses(self, logits: torch.Tensor) -> Dict[str, torch.Tensor]:

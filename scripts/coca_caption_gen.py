@@ -97,7 +97,6 @@ def process(model, data_dicts, write_dir, override: bool = False):
 @click.option('--type', type=str, default='train')
 @click.option('--override/--no-override', type=bool, default=False)
 def main(start, end, device, root, year, type, override):
-
     data_type = f'{type}{year}'
     ann_file = '{}/annotations/instances_{}.json'.format(root, data_type)
 
