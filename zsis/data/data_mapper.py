@@ -32,11 +32,8 @@ class DatasetMapper(_DM):
         ret['with_text'] = cfg.MODEL.META_ARCHITECTURE in ['GeneralizedRCNNWithText', 'GeneralizedRCNNClip']
         return ret
 
-    def __call__(self, dataset_dict):
-        ddict = self._process(deepcopy(dataset_dict))
-        return ddict
-
-    def _process(self, dataset_dict: Dict[str, Any]):
+    def __call__(self, dataset_dict: Dict[str, Any]):
+        dataset_dict = deepcopy(dataset_dict)
         image = detection_utils.read_image(dataset_dict['file_name'], format=self.image_format)
         detection_utils.check_image_size(dataset_dict, image)
 
@@ -53,14 +50,15 @@ class DatasetMapper(_DM):
                 dataset_dict.pop('key', None)
             return dataset_dict
 
-        text_descriptions, class_labels = self.get_instance_meta_data(dataset_dict)
+        text_descriptions, class_labels, instance_labels = self.get_instance_meta_data(dataset_dict)
 
         if 'annotations' in dataset_dict:
             self._transform_annotations(dataset_dict, transforms, image_shape)
 
         if self.with_text:
+            dataset_dict['instances'].set('gt_instance_labels', torch.Tensor(instance_labels))
             dataset_dict['instances'].set('gt_class_labels', torch.Tensor(class_labels))
-            dataset_dict['instances'].set('gt_text_tokens', clip.tokenize(text_descriptions))
+            # dataset_dict['instances'].set('gt_text_tokens', clip.tokenize(text_descriptions))
             dataset_dict['gt_descriptions'] = text_descriptions
 
         return dataset_dict
@@ -71,6 +69,7 @@ class DatasetMapper(_DM):
     def create_synthetic_caption(self, dataset_dict) -> List[List[Any]]:
         text_descriptions = []
         class_labels = []
+        instance_labels = []
 
         # LOAD CAPTION FROM FILE
         caption_data = self.load_caption_from_file(dataset_dict)
@@ -87,12 +86,13 @@ class DatasetMapper(_DM):
                 # textual description of the image roi
                 text_descriptions.append(description)
                 class_labels.append(annotation[key])
+                instance_labels.append(i)
 
             # for class agnostic segmentation, it will be binary classification bg / fg
             if self.is_class_agnostic:
                 annotation[key] = 0
 
-        return text_descriptions, class_labels
+        return text_descriptions, class_labels, instance_labels
 
     def load_caption_from_file(self, dataset_dict: Dict[str, Any]) -> Dict[str, Any]:
         # TEMP
