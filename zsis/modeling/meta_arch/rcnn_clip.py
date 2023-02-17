@@ -291,7 +291,10 @@ class GeneralizedRCNNWithText(GeneralizedRCNN):
 
         # roi pool the positive region features
         roi_features, proposals = self.roi_pooler(images, features, proposals, gt_instances)
-        del features
+
+        # clean up of memory that no longer required for this iteration
+        del features, gt_instances, images
+
         roi_features = self.attnpool(roi_features)
 
         if self.vis_period > 0:
@@ -326,12 +329,12 @@ class GeneralizedRCNNWithText(GeneralizedRCNN):
 
         # cosine similarity as logits
         logit_scale = self.transformer.logit_scale.exp()
-        logits_per_image = logit_scale * roi_features @ text_features.t()
-        # logits_per_text = logits_per_image.t()
+        logits = logit_scale * roi_features @ text_features.t()
+        # logits_per_text = logits.t()
 
-        losses = {**self.losses(logits_per_image), **image_losses, **text_losses}
+        losses = {**self.losses(logits), **image_losses, **text_losses}
 
-        del roi_features, text_features, proposals, logits_per_image
+        del roi_features, text_features, proposals, logits
 
         return losses
 
