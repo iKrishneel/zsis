@@ -51,7 +51,7 @@ def build_text_encoder(cfg) -> Transformer:
     )
 
     if cfg.MODEL.CLIP.TEXT_ENCODER.FROZEN:
-        logger.info('Full text encoder freeze')
+        logger.info('The text transformer is completely frozen')
         for param in transformer.parameters():
             param.requires_grad_(False)
 
@@ -145,6 +145,11 @@ class TextTransformer(Transformer):
         x = x[torch.arange(x.shape[0]), text.argmax(dim=-1)] @ self.text_projection
 
         return x
+
+    def encode_text(self, text: List[str]) -> torch.Tensor:
+        # TODO: Fix the device
+        text_tokens = clip.tokenize(text).cuda()
+        return self.forward(text_tokens)
 
     @property
     def embed_dim(self) -> int:
@@ -305,24 +310,37 @@ class GeneralizedRCNNWithText(GeneralizedRCNN):
         losses = {**detector_losses, **proposal_losses}
         return losses, roi_features, proposals
 
-    def forward_text(self, proposals: List[Dict[str, torch.Tensor]]) -> Dict[str, Any]:
+    def forward_text(self, batched_inputs: List[Dict[str, torch.Tensor]]) -> Dict[str, Any]:
         """
         Forward the text descriptions through the text encoding network
         """
-        text_tokens = torch.cat([p.get('gt_text_tokens') for p in proposals])
-        text_features = self.transformer(text_tokens)
+        text_descriptions = []
+        for batched_input in batched_inputs:
+            text_descriptions.extend(batched_input['gt_descriptions'])
+        text_features = self.transformer.encode_text(text_descriptions)
         text_features = self.text_proj(text_features)
 
         # TODO: Implement loss function
         losses = {}
         return losses, text_features
 
-    def forward(self, batched_inputs: List[Dict[str, torch.Tensor]]):
+    def forward(self, batched_inputs: List[Dict[str, torch.Tensor]]) -> Dict[str, torch.Tensor]:
         if not self.training:
             return self.inference(batched_inputs)
 
         image_losses, roi_features, proposals = self.forward_images(batched_inputs)
-        text_losses, text_features = self.forward_text(proposals)
+        text_losses, text_features = self.forward_text(batched_inputs)
+
+        # accumate the text features for the proposals
+        assert len(batched_inputs) == len(proposals), 'Lenght of batched input and proposals doesnt match'
+
+        k = 0
+        roi_text_features = []
+        for batched_input, proposal in zip(batched_inputs, proposals):
+            indices = proposal.get('gt_instance_labels').long() + k
+            roi_text_features.append(text_features[indices])
+            k += len(batched_input['instances'])
+        text_features = torch.vstack(roi_text_features)
 
         # l2 normalization
         roi_features, text_features = [l2_norm(f) for f in [roi_features, text_features]]
@@ -334,7 +352,9 @@ class GeneralizedRCNNWithText(GeneralizedRCNN):
 
         losses = {**self.losses(logits), **image_losses, **text_losses}
 
-        del roi_features, text_features, proposals, logits
+        # import IPython, sys; IPython.embed(); sys.exit()
+
+        del roi_features, text_features, logits, image_losses, text_losses
 
         return losses
 
