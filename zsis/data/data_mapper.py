@@ -9,7 +9,7 @@ import json
 import numpy as np
 import torch
 from detectron2.config import configurable
-from detectron2.data import detection_utils
+from detectron2.data import detection_utils, MetadataCatalog
 from detectron2.data import transforms as T
 from detectron2.data.dataset_mapper import DatasetMapper as _DM
 
@@ -18,18 +18,31 @@ import clip
 
 class DatasetMapper(_DM):
     @configurable
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, **kwargs) -> None:
         self.is_class_agnostic = kwargs.pop('is_class_agnostic')
         self.with_text = kwargs.pop('with_text', False)
+        self.label_name_map = kwargs.pop('label_name_map', None)
+        self.min_bbox_wh = kwargs.pop('min_bbox_wh', [30, 30])
         super(DatasetMapper, self).__init__(*args, **kwargs)
 
-        self.label_name_map = {0: 'bean', 1: 'olive', 2: 'leaf'}
+        self.sample_descriptions = (
+            'This is an image of a %s',
+            'This image contains %s',
+            '%s is in this image',
+            'This is a photo of a %s',
+        )
 
     @classmethod
     def from_config(cls, cfg, is_train: bool = True) -> Dict[str, Any]:
         ret = _DM.from_config(cfg, is_train)
         ret['is_class_agnostic'] = cfg.MODEL.ROI_BOX_HEAD.CLS_AGNOSTIC_BBOX_REG
         ret['with_text'] = cfg.MODEL.META_ARCHITECTURE in ['GeneralizedRCNNWithText', 'GeneralizedRCNNClip']
+        ret['min_bbox_wh'] = [30, 30]
+
+        if is_train:
+            meta = MetadataCatalog.get(cfg.DATASETS.TRAIN[0])
+            label_name_map = {i: k for i, k in enumerate(meta.thing_classes)}
+            ret['label_name_map'] = label_name_map
         return ret
 
     def __call__(self, dataset_dict: Dict[str, Any]):
@@ -71,17 +84,25 @@ class DatasetMapper(_DM):
         class_labels = []
         instance_labels = []
 
-        # LOAD CAPTION FROM FILE
         caption_data = self.load_caption_from_file(dataset_dict)
+
         key = 'category_id'
         for i, annotation in enumerate(dataset_dict['annotations']):
+            try:
+                caption = caption_data['captions'][i]
+            except IndexError as e:
+                print(e)
+                caption = None
+
             if self.with_text:
                 text = self.label_name_map[annotation[key]]
-                description = f'This is a image of a {text}'
-                for cap in caption_data['captions']:
-                    if annotation['bbox'] == cap['bbox']:
-                        description = cap['caption']
-                        break
+                description = np.random.choice(self.sample_descriptions) % text
+
+                if np.random.choice([True, False]) and (caption is not None and annotation['bbox'] == caption['bbox']):
+                    if np.all(annotation['bbox'][2:] > self.min_bbox_wh):
+                        description = caption['caption']
+                    else:
+                        print("\033[34m Small box\33[0m")
 
                 # textual description of the image roi
                 text_descriptions.append(description)
@@ -95,15 +116,13 @@ class DatasetMapper(_DM):
         return text_descriptions, class_labels, instance_labels
 
     def load_caption_from_file(self, dataset_dict: Dict[str, Any]) -> Dict[str, Any]:
-        # TEMP
-        return {'captions': []}
-
         file_name = dataset_dict['file_name'].split(os.sep)[-1]
         ext = file_name.split('.')[1]
         file_name = file_name.replace(ext, 'json')
         root = os.path.join(
-            f'{os.sep}'.join(dataset_dict['file_name'].split(os.sep)[:-3]), 'caption/train2017/{file_name}'
+            f'{os.sep}'.join(dataset_dict['file_name'].split(os.sep)[:-2]), f'captions/train2017/{file_name}'
         )
+
         with open(root, 'r') as fp:
             data = json.load(fp)
 
@@ -123,10 +142,17 @@ if __name__ == '__main__':
     cfg.merge_from_file(c)
 
     print('loading dataset annotations')
-    dataset_dict = load_coco_json(c1 + '/trainval.json', c1)
+
+    if os.path.isdir(c1):
+        dataset_dict = load_coco_json(c1 + '/trainval.json', c1)
+    else:
+        root = sys.argv[3]
+        dataset_dict = load_coco_json(c1, root)
 
     mapper = DatasetMapper(cfg)
-    x = mapper(dataset_dict[2])
+    for i in range(120000):
+        print(i)
+        x = mapper(dataset_dict[i])
 
     import IPython
 

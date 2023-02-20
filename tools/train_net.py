@@ -88,7 +88,7 @@ def main(args):
 
 def get_argument_parser():
     parser = default_argument_parser()
-    parser.add_argument('--root', required=True, type=str)
+    parser.add_argument('--root', required=False, type=str)
     parser.add_argument('--json', required=False, default=None, type=str)
     parser.add_argument('--name', required=False, default=None, type=str)
     return parser
