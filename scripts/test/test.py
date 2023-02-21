@@ -8,7 +8,7 @@ from detectron2.data.detection_utils import read_image
 from detectron2.utils.visualizer import ColorMode, Visualizer
 
 from zsis.config import get_cfg
-from zsis.modeling import GeneralizedRCNNClip  # NOQA: F401
+from zsis.modeling import GeneralizedRCNNClip, GeneralizedRCNNWithText  # NOQA: F401
 from zsis.engine import DefaultPredictor
 
 import matplotlib.pyplot as plt
@@ -42,13 +42,17 @@ def main(config_file, image, weights=None):
         'nut',
         'broccoli',
         'plate',
+        'black olive',
         'yellowish bean',
         'greenish bean',
     ]
     text_descriptions = [f'This is a photo of a {label}' for label in labels]
 
-    predictor.set_text_descriptions(text_descriptions)
-    predictions = predictor(image)
+    if cfg.MODEL.META_ARCHITECTURE == 'GeneralizedRCNNClip':
+        predictor.set_text_descriptions(text_descriptions)
+        predictions = predictor(image)
+    else:
+        predictions = predictor(image, text_descriptions)
 
     metadata = MetadataCatalog.get(cfg.DATASETS.TEST[0] if len(cfg.DATASETS.TEST) else "__unused")
     metadata.thing_classes = labels
@@ -61,7 +65,6 @@ def main(config_file, image, weights=None):
 
     print(predictions['top_probs'])
     vis_output = visualizer.draw_instance_predictions(predictions=instances)
-
     plt.imshow(vis_output.get_image())
     plt.show()
 
