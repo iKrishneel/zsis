@@ -85,8 +85,7 @@ class DatasetMapper(_DM):
         for i, annotation in enumerate(dataset_dict['annotations']):
             try:
                 caption = caption_data['captions'][i]
-            except IndexError as e:
-                print(e)
+            except IndexError:
                 caption = None
 
             if self.with_text:
@@ -116,6 +115,9 @@ class DatasetMapper(_DM):
         path_to_json = os.path.join(
             f'{os.sep}'.join(dataset_dict['file_name'].split(os.sep)[:-2]), f'captions/train2017/{file_name}'
         )
+
+        if not os.path.isfile(path_to_json):
+            return {'captions': []}
 
         data = load_json(path_to_json)
         assert data['image_id'] == dataset_dict['image_id'], f'The image_id is not same {root}'
