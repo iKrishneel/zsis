@@ -90,10 +90,7 @@ class DatasetMapper(_DM):
                 caption = None
 
             if self.with_text:
-                try:
-                    text = self.label_name_map[annotation[key]]
-                except KeyError:
-                    text = ''
+                text = self.label_name_map[annotation[key]]
                 description = np.random.choice(self.sample_descriptions) % text
 
                 if np.random.choice([True, False]) and (caption is not None and annotation['bbox'] == caption['bbox']):
