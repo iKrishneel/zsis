@@ -50,6 +50,10 @@ class DatasetMapper(_DM):
         return ret
 
     def __call__(self, dataset_dict: Dict[str, Any]):
+
+        if len(dataset_dict['annotations']) == 0:
+            return
+
         dataset_dict = deepcopy(dataset_dict)
         image = detection_utils.read_image(dataset_dict['file_name'], format=self.image_format)
         detection_utils.check_image_size(dataset_dict, image)
@@ -86,7 +90,10 @@ class DatasetMapper(_DM):
                 caption = None
 
             if self.with_text:
-                text = self.label_name_map[annotation[key]]
+                try:
+                    text = self.label_name_map[annotation[key]]
+                except KeyError:
+                    text = ''
                 description = np.random.choice(self.sample_descriptions) % text
 
                 if np.random.choice([True, False]) and (caption is not None and annotation['bbox'] == caption['bbox']):
@@ -139,10 +146,12 @@ class DatasetMapper(_DM):
 
         if self.recompute_boxes:
             instances.gt_boxes = instances.gt_masks.get_bounding_boxes()
-        dataset_dict['instances'] = detection_utils.filter_empty_instances(instances)
+        dataset_dict['instances'], mask = detection_utils.filter_empty_instances(instances, return_mask=True)
 
         if self.with_text:
-            labels = torch.Tensor([(x['instance_labels'], x['class_labels']) for x in instance_captions])
+            labels = torch.Tensor(
+                [(x['instance_labels'], x['class_labels']) for i, x in enumerate(instance_captions) if mask[i]]
+            )
             dataset_dict['instances'].set('gt_instance_labels', labels[:, 0])
             dataset_dict['instances'].set('gt_class_labels', labels[:, 1])
             dataset_dict['gt_descriptions'] = [x['text_descriptions'] for x in instance_captions]
