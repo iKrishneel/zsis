@@ -70,14 +70,12 @@ class DatasetMapper(_DM):
         self.update_annotation_with_instance_wise_captions(dataset_dict)
 
         if 'annotations' in dataset_dict:
-            instance_captions = self._transform_annotations(dataset_dict, transforms, image_shape)
-        else:
-            instance_captions = None
+            self._transform_annotations(dataset_dict, transforms, image_shape)
 
+        import IPython, sys; IPython.embed(); sys.exit()
         return dataset_dict
 
     def update_annotation_with_instance_wise_captions(self, dataset_dict) -> List[Dict[str, Union[str, int]]]:
-        instance_captions = []
         caption_data = self.load_caption_from_file(dataset_dict)
 
         key = 'category_id'
@@ -95,8 +93,6 @@ class DatasetMapper(_DM):
                 if np.random.choice([True, False]) and (caption is not None and annotation['bbox'] == caption['bbox']):
                     if np.all(annotation['bbox'][2:] > self.min_bbox_wh):
                         description = caption['caption']
-                    else:
-                        print('\033[34m Small box\33[0m')
 
                 annotation['caption'] = {
                     'text_descriptions': description,
