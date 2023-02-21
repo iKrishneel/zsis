@@ -2,8 +2,7 @@
 
 from copy import deepcopy
 import os
-from typing import Any, Dict, List
-from dataclasses import dataclass, field
+from typing import Any, Dict, List, Union
 
 import json
 import numpy as np
@@ -13,7 +12,12 @@ from detectron2.data import detection_utils, MetadataCatalog
 from detectron2.data import transforms as T
 from detectron2.data.dataset_mapper import DatasetMapper as _DM
 
-import clip
+
+def load_json(filename: str) -> Dict[str, Any]:
+    assert os.path.isfile(filename), f'{filename} not found!'
+    with open(filename, 'r') as fp:
+        data = json.load(fp)
+    return data
 
 
 class DatasetMapper(_DM):
@@ -63,27 +67,17 @@ class DatasetMapper(_DM):
                 dataset_dict.pop('key', None)
             return dataset_dict
 
-        text_descriptions, class_labels, instance_labels = self.get_instance_meta_data(dataset_dict)
+        self.update_annotation_with_instance_wise_captions(dataset_dict)
 
         if 'annotations' in dataset_dict:
-            self._transform_annotations(dataset_dict, transforms, image_shape)
-
-        if self.with_text:
-            dataset_dict['instances'].set('gt_instance_labels', torch.Tensor(instance_labels))
-            dataset_dict['instances'].set('gt_class_labels', torch.Tensor(class_labels))
-            # dataset_dict['instances'].set('gt_text_tokens', clip.tokenize(text_descriptions))
-            dataset_dict['gt_descriptions'] = text_descriptions
+            instance_captions = self._transform_annotations(dataset_dict, transforms, image_shape)
+        else:
+            instance_captions = None
 
         return dataset_dict
 
-    def get_instance_meta_data(self, dataset_dict) -> List[List[Any]]:
-        return self.create_synthetic_caption(dataset_dict)
-
-    def create_synthetic_caption(self, dataset_dict) -> List[List[Any]]:
-        text_descriptions = []
-        class_labels = []
-        instance_labels = []
-
+    def update_annotation_with_instance_wise_captions(self, dataset_dict) -> List[Dict[str, Union[str, int]]]:
+        instance_captions = []
         caption_data = self.load_caption_from_file(dataset_dict)
 
         key = 'category_id'
@@ -102,32 +96,61 @@ class DatasetMapper(_DM):
                     if np.all(annotation['bbox'][2:] > self.min_bbox_wh):
                         description = caption['caption']
                     else:
-                        print("\033[34m Small box\33[0m")
+                        print('\033[34m Small box\33[0m')
 
-                # textual description of the image roi
-                text_descriptions.append(description)
-                class_labels.append(annotation[key])
-                instance_labels.append(i)
+                annotation['caption'] = {
+                    'text_descriptions': description,
+                    'class_labels': annotation[key],
+                    'instance_labels': i,
+                }
 
-            # for class agnostic segmentation, it will be binary classification bg / fg
+            # For class agnostic segmentation, it will be binary classification bg / fg
             if self.is_class_agnostic:
                 annotation[key] = 0
 
-        return text_descriptions, class_labels, instance_labels
+        return dataset_dict
 
     def load_caption_from_file(self, dataset_dict: Dict[str, Any]) -> Dict[str, Any]:
         file_name = dataset_dict['file_name'].split(os.sep)[-1]
         ext = file_name.split('.')[1]
         file_name = file_name.replace(ext, 'json')
-        root = os.path.join(
+        path_to_json = os.path.join(
             f'{os.sep}'.join(dataset_dict['file_name'].split(os.sep)[:-2]), f'captions/train2017/{file_name}'
         )
 
-        with open(root, 'r') as fp:
-            data = json.load(fp)
-
+        data = load_json(path_to_json)
         assert data['image_id'] == dataset_dict['image_id'], f'The image_id is not same {root}'
         return data
+
+    def _transform_annotations(self, dataset_dict, transforms, image_shape):
+        for anno in dataset_dict['annotations']:
+            if not self.use_instance_mask:
+                anno.pop('segmentation', None)
+            if not self.use_keypoint:
+                anno.pop('keypoints', None)
+
+        annos = [
+            detection_utils.transform_instance_annotations(
+                obj, transforms, image_shape, keypoint_hflip_indices=self.keypoint_hflip_indices
+            )
+            for obj in dataset_dict.pop('annotations')
+            if obj.get('iscrowd', 0) == 0
+        ]
+
+        # gather all the captions
+        instance_captions = [anno.pop('caption', None) for anno in annos]
+
+        instances = detection_utils.annotations_to_instances(annos, image_shape, mask_format=self.instance_mask_format)
+
+        if self.recompute_boxes:
+            instances.gt_boxes = instances.gt_masks.get_bounding_boxes()
+        dataset_dict['instances'] = detection_utils.filter_empty_instances(instances)
+
+        if self.with_text:
+            labels = torch.Tensor([(x['instance_labels'], x['class_labels']) for x in instance_captions])
+            dataset_dict['instances'].set('gt_instance_labels', labels[:, 0])
+            dataset_dict['instances'].set('gt_class_labels', labels[:, 1])
+            dataset_dict['gt_descriptions'] = [x['text_descriptions'] for x in instance_captions]
 
 
 if __name__ == '__main__':
