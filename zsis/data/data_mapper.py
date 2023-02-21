@@ -72,7 +72,6 @@ class DatasetMapper(_DM):
         if 'annotations' in dataset_dict:
             self._transform_annotations(dataset_dict, transforms, image_shape)
 
-        import IPython, sys; IPython.embed(); sys.exit()
         return dataset_dict
 
     def update_annotation_with_instance_wise_captions(self, dataset_dict) -> List[Dict[str, Union[str, int]]]:
