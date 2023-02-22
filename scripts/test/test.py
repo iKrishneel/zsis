@@ -35,20 +35,21 @@ def main(config_file: str, image: str, weights: str, threshold: float, rgb: bool
 
     predictor = DefaultPredictor(cfg)
     labels = [
-        'fish',
-        'white leaf',
+        # 'fish',
+        # 'white leaf',
         'greenish leaf',
         'white bean',
         'red bean',
-        'cashew nut',
+        'yellow cashew nut',
         'nut',
         'broccoli',
         'plate',
         'black olive',
         'yellowish bean',
         'greenish bean',
+        'black keyboard',
     ]
-    text_descriptions = [f'This is an image of a {label}' for label in labels]
+    text_descriptions = [f'This is a photo of a {label}' for label in labels]
 
     if cfg.MODEL.META_ARCHITECTURE == 'GeneralizedRCNNClip':
         predictor.set_text_descriptions(text_descriptions)

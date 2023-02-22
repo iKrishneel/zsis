@@ -41,6 +41,8 @@ class DatasetMapper(_DM):
         ret = _DM.from_config(cfg, is_train)
         ret['is_class_agnostic'] = cfg.MODEL.ROI_BOX_HEAD.CLS_AGNOSTIC_BBOX_REG
         ret['with_text'] = cfg.MODEL.META_ARCHITECTURE in ['GeneralizedRCNNWithText', 'GeneralizedRCNNClip']
+
+        # TODO: Use argument for size
         ret['min_bbox_wh'] = [30, 30]
 
         if is_train:

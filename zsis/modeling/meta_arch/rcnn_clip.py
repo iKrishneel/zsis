@@ -55,6 +55,8 @@ def build_text_encoder(cfg) -> Transformer:
         for param in transformer.parameters():
             param.requires_grad_(False)
 
+        transformer.logit_scale.requires_grad_(True)
+
     return transformer
 
 
@@ -321,7 +323,7 @@ class GeneralizedRCNNWithText(GeneralizedRCNN):
         text_features = self.transformer.encode_text(text_descriptions)
         text_features = self.text_proj(text_features)
 
-        if self.training:
+        if not self.training:
             return text_features
 
         # TODO: Implement loss function
@@ -332,6 +334,10 @@ class GeneralizedRCNNWithText(GeneralizedRCNN):
         if not self.training:
             return self.inference(batched_inputs)
 
+        if self.transformer.logit_scale.requires_grad:
+            # clamp to ln(100), as in the paper
+            self.transformer.logit_scale.clamp_(0, np.log(100))
+
         image_losses, roi_features, proposals = self.forward_images(batched_inputs)
         text_losses, text_features = self.forward_text(batched_inputs)
 
@@ -339,12 +345,12 @@ class GeneralizedRCNNWithText(GeneralizedRCNN):
         assert len(batched_inputs) == len(proposals), 'Lenght of batched input and proposals doesnt match'
 
         k = 0
-        roi_text_features = []
+        _roi_text_features = []
         for batched_input, proposal in zip(batched_inputs, proposals):
             indices = proposal.get('gt_instance_labels').long() + k
-            roi_text_features.append(text_features[indices])
+            _roi_text_features.append(text_features[indices])
             k += len(batched_input['instances'])
-        text_features = torch.vstack(roi_text_features)
+        text_features = torch.vstack(_roi_text_features)
 
         # l2 normalization
         roi_features, text_features = [l2_norm(f) for f in [roi_features, text_features]]
@@ -388,7 +394,7 @@ class GeneralizedRCNNWithText(GeneralizedRCNN):
         roi_features = self.attnpool(roi_features)
 
         # run the text encoding
-        _, text_features = self.forward_text(batched_inputs)
+        text_features = self.forward_text(batched_inputs)
 
         # l2 normalization
         roi_features, text_features = [l2_norm(f) for f in [roi_features, text_features]]
@@ -399,7 +405,8 @@ class GeneralizedRCNNWithText(GeneralizedRCNN):
             results, valid_indices = self.postprocess(results, batched_inputs, images.image_sizes)
             text_probs = text_probs[valid_indices]
 
-        print(text_probs)
+        # import IPython, sys; IPython.embed(); sys.exit()
+        # print(text_probs.topk(5, dim=1))
         top_probs, top_labels = text_probs.topk(self.topk, dim=1)
 
         # TODO: support for multiple batch size
@@ -413,10 +420,11 @@ class GeneralizedRCNNWithText(GeneralizedRCNN):
 
     def cross_entropy(self, logits: torch.Tensor, dim: int) -> torch.Tensor:
         log_probs = nn.functional.log_softmax(logits, dim=dim)
-        nll = torch.diag(log_probs)
-        return -torch.mean(nll)
+        return -torch.mean(torch.diag(log_probs))
 
-    def postprocess(self, instances, batched_inputs: List[Dict[str, torch.Tensor]], image_sizes):
+    def postprocess(
+        self, instances, batched_inputs: List[Dict[str, torch.Tensor]], image_sizes: Tuple[int, int]
+    ) -> Tuple[List[Dict[str, Instances]], List[torch.Tensor]]:
         """
         Rescale the output instances to the target size.
         """
