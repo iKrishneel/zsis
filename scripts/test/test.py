@@ -26,7 +26,7 @@ def main(config_file: str, image: str, weights: str, threshold: float, rgb: bool
 
     cfg.MODEL.CLIP.TOPK = 1
     cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = threshold
-    cfg.DATASETS.TEST = ['leaf_bean']
+    # cfg.DATASETS.TEST = ['leaf_bean']
 
     if weights is not None:
         cfg.MODEL.WEIGHTS = weights
@@ -35,18 +35,18 @@ def main(config_file: str, image: str, weights: str, threshold: float, rgb: bool
 
     predictor = DefaultPredictor(cfg)
     labels = [
-        # 'fish',
-        # 'white leaf',
-        'greenish leaf',
+        'fish',
+        'white color leaf',
+        'green color leaf',
         'white bean',
-        'red bean',
-        'yellow cashew nut',
+        'red colored bean',
+        'yellow color cashew nut',
         'nut',
         'broccoli',
         'plate',
         'black olive',
         'yellowish bean',
-        'greenish bean',
+        'green color bean',
         'black keyboard',
     ]
     text_descriptions = [f'This is a photo of a {label}' for label in labels]
@@ -67,7 +67,17 @@ def main(config_file: str, image: str, weights: str, threshold: float, rgb: bool
     instances.set('scores', top_probs)
 
     vis_output = visualizer.draw_instance_predictions(predictions=instances)
-    plt.imshow(vis_output.get_image())
+
+    plt.close()
+    _, (ax1, ax2) = plt.subplots(2, 1)
+    ax1.imshow(image)
+    ax1.set_title('Input Image')
+    ax1.axis('off')
+
+    ax2.imshow(vis_output.get_image())
+    ax2.set_title('Detection results')
+    ax2.axis('off')
+
     plt.show()
 
 

@@ -336,7 +336,8 @@ class GeneralizedRCNNWithText(GeneralizedRCNN):
 
         if self.transformer.logit_scale.requires_grad:
             # clamp to ln(100), as in the paper
-            self.transformer.logit_scale.clamp_(0, np.log(100))
+            with torch.no_grad():
+                self.transformer.logit_scale.clamp_(0, np.log(100))
 
         image_losses, roi_features, proposals = self.forward_images(batched_inputs)
         text_losses, text_features = self.forward_text(batched_inputs)
@@ -405,8 +406,6 @@ class GeneralizedRCNNWithText(GeneralizedRCNN):
             results, valid_indices = self.postprocess(results, batched_inputs, images.image_sizes)
             text_probs = text_probs[valid_indices]
 
-        # import IPython, sys; IPython.embed(); sys.exit()
-        # print(text_probs.topk(5, dim=1))
         top_probs, top_labels = text_probs.topk(self.topk, dim=1)
 
         # TODO: support for multiple batch size
