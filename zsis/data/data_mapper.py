@@ -50,7 +50,6 @@ class DatasetMapper(_DM):
         return ret
 
     def __call__(self, dataset_dict: Dict[str, Any]):
-
         if len(dataset_dict['annotations']) == 0:
             return
 

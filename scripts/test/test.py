@@ -18,24 +18,26 @@ import matplotlib.pyplot as plt
 @click.option('--config-file', required=False, default='../../config/culter/cascade_mask_rcnn_R_50_FPN_clip.yaml')
 @click.option('--image', required=True)
 @click.option('--weights', required=False)
-def main(config_file, image, weights=None):
+@click.option('--threshold', default=0.5)
+@click.option('--rgb/--bgr', default=True)
+def main(config_file: str, image: str, weights: str, threshold: float, rgb: bool) -> None:
     cfg = get_cfg()
     cfg.merge_from_file(config_file)
 
     cfg.MODEL.CLIP.TOPK = 1
-    cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.5
+    cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = threshold
     cfg.DATASETS.TEST = ['leaf_bean']
 
     if weights is not None:
         cfg.MODEL.WEIGHTS = weights
 
-    image = read_image(image, 'RGB')
+    image = read_image(image, 'RGB' if rgb else 'BGR')
 
     predictor = DefaultPredictor(cfg)
     labels = [
         'fish',
         'white leaf',
-        'green leaf',
+        'greenish leaf',
         'white bean',
         'red bean',
         'cashew nut',
@@ -46,7 +48,7 @@ def main(config_file, image, weights=None):
         'yellowish bean',
         'greenish bean',
     ]
-    text_descriptions = [f'This is a photo of a {label}' for label in labels]
+    text_descriptions = [f'This is an image of a {label}' for label in labels]
 
     if cfg.MODEL.META_ARCHITECTURE == 'GeneralizedRCNNClip':
         predictor.set_text_descriptions(text_descriptions)
@@ -63,7 +65,6 @@ def main(config_file, image, weights=None):
     instances.set('pred_classes', top_labels)
     instances.set('scores', top_probs)
 
-    print(predictions['top_probs'])
     vis_output = visualizer.draw_instance_predictions(predictions=instances)
     plt.imshow(vis_output.get_image())
     plt.show()

@@ -120,8 +120,8 @@ class TextTransformer(Transformer):
         nn.init.normal_(self.token_embedding.weight, std=0.02)
         nn.init.normal_(self.positional_embedding, std=0.01)
 
-        proj_std = (self.width ** -0.5) * ((2 * self.layers) ** -0.5)
-        attn_std = self.width ** -0.5
+        proj_std = (self.width**-0.5) * ((2 * self.layers) ** -0.5)
+        attn_std = self.width**-0.5
         fc_std = (2 * self.width) ** -0.5
         for block in self.resblocks:
             nn.init.normal_(block.attn.in_proj_weight, std=attn_std)
@@ -130,7 +130,7 @@ class TextTransformer(Transformer):
             nn.init.normal_(block.mlp.c_proj.weight, std=proj_std)
 
         if self.text_projection is not None:
-            nn.init.normal_(self.text_projection, std=self.width ** -0.5)
+            nn.init.normal_(self.text_projection, std=self.width**-0.5)
 
     def forward(self, text: List[torch.Tensor]):
         x = self.token_embedding(text).type(self.dtype)  # [batch_size, n_ctx, d_model]
@@ -390,6 +390,8 @@ class GeneralizedRCNNWithText(GeneralizedRCNN):
         # run the text encoding
         _, text_features = self.forward_text(batched_inputs)
 
+        # l2 normalization
+        roi_features, text_features = [l2_norm(f) for f in [roi_features, text_features]]
         text_probs = (self.prob_scale.to(self.device) * roi_features @ text_features.t()).softmax(dim=-1)
 
         if do_postprocess:
@@ -397,6 +399,7 @@ class GeneralizedRCNNWithText(GeneralizedRCNN):
             results, valid_indices = self.postprocess(results, batched_inputs, images.image_sizes)
             text_probs = text_probs[valid_indices]
 
+        print(text_probs)
         top_probs, top_labels = text_probs.topk(self.topk, dim=1)
 
         # TODO: support for multiple batch size
