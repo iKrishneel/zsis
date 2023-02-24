@@ -55,7 +55,7 @@ def build_text_encoder(cfg) -> Transformer:
         for param in transformer.parameters():
             param.requires_grad_(False)
 
-        transformer.logit_scale.requires_grad_(True)
+        # transformer.logit_scale.requires_grad_(True)
 
     return transformer
 
@@ -269,7 +269,15 @@ class GeneralizedRCNNWithText(GeneralizedRCNN):
     def from_config(cls, cfg) -> Dict[str, Any]:
         attrs = super().from_config(cfg)
 
-        output_shape = attrs['backbone'].output_shape()
+        backbone = attrs['backbone']
+        output_shape = backbone.output_shape()
+
+        if cfg.MODEL.CLIP.IMAGE_ENCODER.FROZEN:
+            logger.info('The Image backbone is completely frozen')
+            for param in backbone.parameters():
+                param.requires_grad_(False)
+            attrs['backbone'] = backbone
+
         attrs['roi_pooler'] = build_roi_pooler(cfg, output_shape)
         attrs['text_encoder'] = build_text_encoder(cfg)
         attrs['attnpool'] = build_attention_pool(cfg)
