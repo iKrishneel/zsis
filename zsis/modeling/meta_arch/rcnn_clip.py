@@ -267,18 +267,27 @@ class GeneralizedRCNNWithText(GeneralizedRCNN):
 
     @classmethod
     def from_config(cls, cfg) -> Dict[str, Any]:
-        attrs = super().from_config(cfg)
-
-        backbone = attrs['backbone']
-        output_shape = backbone.output_shape()
-
         if cfg.MODEL.CLIP.IMAGE_ENCODER.FROZEN:
+            from detectron2.modeling import build_backbone
+
+            backbone = build_backbone(cfg)
             logger.info('The Image backbone is completely frozen')
             for param in backbone.parameters():
                 param.requires_grad_(False)
-            attrs['backbone'] = backbone
 
-        attrs['roi_pooler'] = build_roi_pooler(cfg, output_shape)
+            attrs = {
+                'backbone': backbone,
+                'proposal_generator': None,
+                'roi_heads': None,
+                'input_format': cfg.INPUT.FORMAT,
+                'vis_period': cfg.VIS_PERIOD,
+                'pixel_mean': cfg.MODEL.PIXEL_MEAN,
+                'pixel_std': cfg.MODEL.PIXEL_STD,
+            }
+        else:
+            attrs = super().from_config(cfg)
+
+        attrs['roi_pooler'] = build_roi_pooler(cfg, backbone.output_shape())
         attrs['text_encoder'] = build_text_encoder(cfg)
         attrs['attnpool'] = build_attention_pool(cfg)
         attrs['topk'] = cfg.MODEL.CLIP.TOPK
@@ -295,14 +304,22 @@ class GeneralizedRCNNWithText(GeneralizedRCNN):
         )
         features = self.backbone(images.tensor)
 
-        if self.proposal_generator is not None:
-            proposals, proposal_losses = self.proposal_generator(images, features, gt_instances)
+        if self.proposal_generator is None and self.roi_heads is None:
+            proposals, proposal_losses = [], {}
+            for i, gt_instance in enumerate(gt_instances):
+                gt_instance.set('proposal_boxes', gt_instance.get('gt_boxes'))
+                gt_instance.set('objectness_logits', torch.ones(len(gt_instance)) * 10)
+                proposals.append(gt_instance)
+            detector_losses = proposal_losses = {}
         else:
-            assert 'proposals' in batched_inputs[0]
-            proposals = [x['proposals'].to(self.device) for x in batched_inputs]
-            proposal_losses = {}
+            if self.proposal_generator is not None:
+                proposals, proposal_losses = self.proposal_generator(images, features, gt_instances)
+            else:
+                assert 'proposals' in batched_inputs[0]
+                proposals = [x['proposals'].to(self.device) for x in batched_inputs]
+                proposal_losses = {}
 
-        _, detector_losses = self.roi_heads(images, features, proposals, gt_instances)
+            _, detector_losses = self.roi_heads(images, features, proposals, gt_instances)
 
         # roi pool the positive region features
         roi_features, proposals = self.roi_pooler(images, features, proposals, gt_instances)
