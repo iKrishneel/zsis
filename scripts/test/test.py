@@ -26,7 +26,7 @@ def main(config_file: str, image: str, weights: str, threshold: float, rgb: bool
 
     cfg.MODEL.CLIP.TOPK = 1
     cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = threshold
-    # cfg.DATASETS.TEST = ['leaf_bean']
+    cfg.MODEL.CLIP.IMAGE_ENCODER.FROZEN = False
 
     if weights is not None:
         cfg.MODEL.WEIGHTS = weights
@@ -36,17 +36,16 @@ def main(config_file: str, image: str, weights: str, threshold: float, rgb: bool
     predictor = DefaultPredictor(cfg)
     labels = [
         'fish',
-        'white color leaf',
-        'green color leaf',
+        'white leaf',
+        'greenish leaf',
         'white bean',
-        'red colored bean',
-        'yellow color cashew nut',
+        'redish bean',
+        'yellowish cashew nut',
         'nut',
         'broccoli',
-        'plate',
-        'black olive',
+        'white plate',
         'yellowish bean',
-        'green color bean',
+        'greenish bean',
         'black keyboard',
     ]
     text_descriptions = [f'This is a photo of a {label}' for label in labels]

@@ -47,6 +47,7 @@ class DefaultPredictor(_DefaultPredictor):
         text_feats = self.model.get_text_features(text_descriptions)
         self._text_features = text_feats['text_features']
         self._text_tokens = text_feats['text_tokens']
+        self._text_descriptions = text_descriptions
 
     @property
     def text_descriptions(self):

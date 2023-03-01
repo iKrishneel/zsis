@@ -97,7 +97,7 @@ def get_argument_parser():
 if __name__ == '__main__':
     args = get_argument_parser().parse_args()
 
-    print('Command Line Args:', args)
+    print(f'\033[32m \033[5mCommand Line Args: \033[25m{args}\033[0m')
     launch(
         main,
         args.num_gpus,

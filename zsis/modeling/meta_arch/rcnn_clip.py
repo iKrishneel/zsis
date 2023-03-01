@@ -371,8 +371,7 @@ class GeneralizedRCNNWithText(GeneralizedRCNN):
         # accumate the text features for the proposals
         assert len(batched_inputs) == len(proposals), 'Lenght of batched input and proposals doesnt match'
 
-        k = 0
-        _roi_text_features = []
+        _roi_text_features, k = [], 0
         for batched_input, proposal in zip(batched_inputs, proposals):
             indices = proposal.get('gt_instance_labels').long() + k
             _roi_text_features.append(text_features[indices])
