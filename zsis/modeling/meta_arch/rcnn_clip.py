@@ -50,13 +50,6 @@ def build_text_encoder(cfg) -> Transformer:
         attn_mask=build_attention_mask(cfg),
     )
 
-    if cfg.MODEL.CLIP.TEXT_ENCODER.FROZEN:
-        logger.info('The text transformer is completely frozen')
-        for param in transformer.parameters():
-            param.requires_grad_(False)
-
-        # transformer.logit_scale.requires_grad_(True)
-
     return transformer
 
 
@@ -248,6 +241,9 @@ class GeneralizedRCNNClip(GeneralizedRCNN):
 class GeneralizedRCNNWithText(GeneralizedRCNN):
     @configurable
     def __init__(self, **kwargs):
+        frozen_image_encoder = kwargs.pop('frozen_image_encoder', False)
+        frozen_text_encoder = kwargs.pop('frozen_text_encoder', False)
+
         text_encoder = kwargs.pop('text_encoder', None)
         roi_pooler = kwargs.pop('roi_pooler', None)
         attnpool = kwargs.pop('attnpool', None)
@@ -265,16 +261,26 @@ class GeneralizedRCNNWithText(GeneralizedRCNN):
         embed_dim = self.transformer.embed_dim
         self.text_proj = nn.Linear(embed_dim, embed_dim)
 
+        if frozen_image_encoder:
+            logger.info('The Image backbone is completely frozen')
+            for param in self.backbone.parameters():
+                param.requires_grad_(False)
+            for param in self.attnpool.parameters():
+                param.requires_grad_(False)
+
+        if frozen_text_encoder:
+            logger.info('The text transformer is completely frozen')
+            for param in self.transformer.parameters():
+                param.requires_grad_(False)
+            # transformer.logit_scale.requires_grad_(True)
+
     @classmethod
     def from_config(cls, cfg) -> Dict[str, Any]:
+        """
         if cfg.MODEL.CLIP.IMAGE_ENCODER.FROZEN:
             from detectron2.modeling import build_backbone
 
             backbone = build_backbone(cfg)
-            logger.info('The Image backbone is completely frozen')
-            for param in backbone.parameters():
-                param.requires_grad_(False)
-
             attrs = {
                 'backbone': backbone,
                 'proposal_generator': None,
@@ -285,14 +291,17 @@ class GeneralizedRCNNWithText(GeneralizedRCNN):
                 'pixel_std': cfg.MODEL.PIXEL_STD,
             }
         else:
-            attrs = super().from_config(cfg)
-            backbone = attrs['backbone']
+        """
+        attrs = super().from_config(cfg)
+        backbone = attrs['backbone']
 
         attrs['roi_pooler'] = build_roi_pooler(cfg, backbone.output_shape())
         attrs['text_encoder'] = build_text_encoder(cfg)
         attrs['attnpool'] = build_attention_pool(cfg)
         attrs['topk'] = cfg.MODEL.CLIP.TOPK
         attrs['prob_scale'] = cfg.MODEL.CLIP.PROB_SCALE
+        attrs['frozen_image_encoder'] = cfg.MODEL.CLIP.IMAGE_ENCODER.FROZEN
+        attrs['frozen_text_encoder'] = cfg.MODEL.CLIP.TEXT_ENCODER.FROZEN
         return attrs
 
     def forward_images(self, batched_inputs: List[Dict[str, torch.Tensor]]) -> List[Any]:
@@ -357,6 +366,11 @@ class GeneralizedRCNNWithText(GeneralizedRCNN):
         return losses, text_features
 
     def forward(self, batched_inputs: List[Dict[str, torch.Tensor]]) -> Dict[str, torch.Tensor]:
+        import IPython, sys
+
+        IPython.embed()
+        sys.exit()
+
         if not self.training:
             return self.inference(batched_inputs)
 

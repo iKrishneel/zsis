@@ -47,7 +47,8 @@ class DatasetMapper(_DM):
 
         if is_train:
             meta = MetadataCatalog.get(cfg.DATASETS.TRAIN[0])
-            label_name_map = {i: k for i, k in enumerate(meta.thing_classes)}
+            # label_name_map = {i: k for i, k in enumerate(meta.thing_classes)}
+            label_name_map = {0: 'leaf', 1: 'bean'}
             ret['label_name_map'] = label_name_map
         return ret
 
