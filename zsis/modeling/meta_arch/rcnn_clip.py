@@ -286,6 +286,7 @@ class GeneralizedRCNNWithText(GeneralizedRCNN):
             }
         else:
             attrs = super().from_config(cfg)
+            backbone = attrs['backbone']
 
         attrs['roi_pooler'] = build_roi_pooler(cfg, backbone.output_shape())
         attrs['text_encoder'] = build_text_encoder(cfg)
