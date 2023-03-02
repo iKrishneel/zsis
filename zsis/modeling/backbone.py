@@ -12,26 +12,10 @@ from clip.model import ModifiedResNet
 __all__ = ['build_modified_resnet_backbone', 'build_modified_resnet_fpn_backbone']
 
 
-def replace_non_trainable_batchnorm(model):
-    import torch.nn as nn
-    from torchvision.ops import FrozenBatchNorm2d
-
-    for name, module in model.named_modules():
-        if isinstance(module, nn.BatchNorm2d):
-            requires_grad = False
-            for param in module.parameters():
-                requires_grad |= param.requires_grad
-
-            if not requires_grad:
-                setattr(model, name, FrozenBatchNorm2d(num_features=module.num_features))
-    return model
-
-
 def _build_backbone(cfg):
     layers = cfg.MODEL.RESNETS.LAYERS
     output_dim, heads = 4, 1  # dummpy not used
     model = ModifiedResNet(layers=layers, output_dim=output_dim, heads=heads)
-    # model = replace_non_trainable_batchnorm(model)
     backbone = Backbone(cfg, model=model)
     return backbone
 

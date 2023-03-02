@@ -7,9 +7,9 @@ INPUT:
   FORMAT: "RGB"
   FIXED_INPUT_SIZE: False  
 MODEL:
-  META_ARCHITECTURE: "GeneralizedRCNN"
-  PIXEL_MEAN: [0.48145466, 0.4578275, 0.40821073]
-  PIXEL_STD: [0.26862954, 0.26130258, 0.27577711]
+  META_ARCHITECTURE: "GeneralizedRCNN2"
+  PIXEL_MEAN: [122.7709, 116.7460, 104.0937]
+  PIXEL_STD: [68.5005, 66.6322, 70.3232]
   WEIGHTS: 'http://dl.fbaipublicfiles.com/cutler/checkpoints/cutler_cascade_final.pth'
   MASK_ON: True
   CLIP:
@@ -55,7 +55,7 @@ MODEL:
     POST_NMS_TOPK_TRAIN: 4000
     NMS_THRESH: 0.65
 DATASETS:
-  TRAIN: ["coco_2017_train1", ]
+  TRAIN: ["coco_2017_train", ]
   TEST: []
 SOLVER:
   IMS_PER_BATCH: 16

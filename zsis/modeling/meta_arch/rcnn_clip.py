@@ -8,7 +8,6 @@ import torch.nn as nn
 from PIL import Image
 
 from detectron2.config import configurable
-from detectron2.modeling import Backbone
 from detectron2.structures import Instances, Boxes, ROIMasks
 from detectron2.modeling.meta_arch import META_ARCH_REGISTRY, GeneralizedRCNN
 from detectron2.utils.logger import setup_logger
@@ -115,8 +114,8 @@ class TextTransformer(Transformer):
         nn.init.normal_(self.token_embedding.weight, std=0.02)
         nn.init.normal_(self.positional_embedding, std=0.01)
 
-        proj_std = (self.width**-0.5) * ((2 * self.layers) ** -0.5)
-        attn_std = self.width**-0.5
+        proj_std = (self.width ** -0.5) * ((2 * self.layers) ** -0.5)
+        attn_std = self.width ** -0.5
         fc_std = (2 * self.width) ** -0.5
         for block in self.resblocks:
             nn.init.normal_(block.attn.in_proj_weight, std=attn_std)
@@ -125,7 +124,7 @@ class TextTransformer(Transformer):
             nn.init.normal_(block.mlp.c_proj.weight, std=proj_std)
 
         if self.text_projection is not None:
-            nn.init.normal_(self.text_projection, std=self.width**-0.5)
+            nn.init.normal_(self.text_projection, std=self.width ** -0.5)
 
     def forward(self, text: List[torch.Tensor]):
         x = self.token_embedding(text).type(self.dtype)  # [batch_size, n_ctx, d_model]
@@ -153,6 +152,41 @@ class TextTransformer(Transformer):
     @property
     def dtype(self) -> str:
         return self.resblocks[0].attn.out_proj.weight.dtype
+
+
+@META_ARCH_REGISTRY.register()
+class GeneralizedRCNN2(GeneralizedRCNN):
+    def forward(self, batched_inputs: List[Dict[str, torch.Tensor]]):
+        if not self.training:
+            return super().forward(batched_inputs)
+
+        images = self.preprocess_image(batched_inputs)
+        if 'instances' in batched_inputs[0]:
+            gt_instances = [x['instances'].to(self.device) for x in batched_inputs]
+        else:
+            gt_instances = None
+
+        with torch.no_grad():
+            self.backbone.eval()
+            features = self.backbone(images.tensor)
+
+        if self.proposal_generator is not None:
+            proposals, proposal_losses = self.proposal_generator(images, features, gt_instances)
+        else:
+            assert "proposals" in batched_inputs[0]
+            proposals = [x["proposals"].to(self.device) for x in batched_inputs]
+            proposal_losses = {}
+
+        _, detector_losses = self.roi_heads(images, features, proposals, gt_instances)
+        if self.vis_period > 0:
+            storage = get_event_storage()
+            if storage.iter % self.vis_period == 0:
+                self.visualize_training(batched_inputs, proposals)
+
+        losses = {}
+        losses.update(detector_losses)
+        losses.update(proposal_losses)
+        return losses
 
 
 @META_ARCH_REGISTRY.register()
