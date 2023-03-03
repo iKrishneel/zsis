@@ -44,7 +44,7 @@ class DefaultPredictor(_DefaultPredictor):
 
     @torch.no_grad()
     def set_text_descriptions(self, text_descriptions: List[str]):
-        text_feats = self.model.get_text_features(text_descriptions)
+        text_feats = self.model._text_features(text_descriptions)
         self._text_features = text_feats['text_features']
         self._text_tokens = text_feats['text_tokens']
         self._text_descriptions = text_descriptions

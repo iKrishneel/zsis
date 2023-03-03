@@ -26,6 +26,7 @@ def main(config_file: str, image: str, weights: str, threshold: float, rgb: bool
     cfg.merge_from_file(config_file)
 
     cfg.MODEL.CLIP.TOPK = 1
+    cfg.MODEL.CLIP.ARCHITECTURE = "RN50"
     cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = threshold
     cfg.MODEL.CLIP.IMAGE_ENCODER.FROZEN = False
 
@@ -51,7 +52,7 @@ def main(config_file: str, image: str, weights: str, threshold: float, rgb: bool
     ]
     text_descriptions = [f'This is a photo of a {label}' for label in labels]
 
-    for _ in range(5):
+    for _ in range(10):
         time_start = time.time()
         if cfg.MODEL.META_ARCHITECTURE == 'GeneralizedRCNNClip':
             predictor.set_text_descriptions(text_descriptions)
@@ -59,7 +60,7 @@ def main(config_file: str, image: str, weights: str, threshold: float, rgb: bool
         else:
             predictions = predictor(image, text_descriptions)
 
-        print(f'\033[32m\033[5mProcessing time {time.time() - time_start}\033[25m\033[0m')
+        print(f'\033[32mProcessing time {time.time() - time_start}\033[0m')
 
     metadata = MetadataCatalog.get(cfg.DATASETS.TEST[0] if len(cfg.DATASETS.TEST) else "__unused")
     metadata.thing_classes = labels
@@ -84,9 +85,7 @@ def main(config_file: str, image: str, weights: str, threshold: float, rgb: bool
 
     plt.show()
 
-    import IPython
-
-    IPython.embed()
+    # import IPython;IPython.embed()
 
 
 if __name__ == '__main__':

@@ -6,6 +6,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from PIL import Image
+import torchvision.transforms as T
 
 from detectron2.config import configurable
 from detectron2.structures import Instances, Boxes, ROIMasks
@@ -216,6 +217,8 @@ class GeneralizedRCNNClip(GeneralizedRCNN):
     @configurable
     def __init__(self, **kwargs):
         clip_model = kwargs.pop('clip_model', None)
+        roi_pooler = kwargs.pop('roi_pooler', None)
+
         self.preprocessing = kwargs.pop('preprocessing', None)
         self.topk = kwargs.pop('topk', 1)
         self.crop_scale = kwargs.pop('crop_scale', 1.0)
@@ -228,6 +231,7 @@ class GeneralizedRCNNClip(GeneralizedRCNN):
         super(GeneralizedRCNNClip, self).__init__(**kwargs)
 
         self.clip_model = clip_model
+        self.roi_pooler = roi_pooler
 
     @classmethod
     def from_config(cls, cfg) -> Dict[str, Any]:
@@ -238,6 +242,17 @@ class GeneralizedRCNNClip(GeneralizedRCNN):
         attrs['prob_scale'] = cfg.MODEL.CLIP.PROB_SCALE
         attrs['crop_scale'] = cfg.MODEL.CLIP.CROP_SCALE
         attrs['image_format'] = cfg.INPUT.FORMAT
+
+        # TODO: organize
+        from detectron2.modeling.poolers import ROIPooler
+
+        roi_pooler = ROIPooler(
+            output_size=cfg.MODEL.CLIP.IMAGE_ENCODER.ROI_HEAD.POOLER_RESOLUTION,
+            scales=(1.0 / 32.0,),
+            sampling_ratio=cfg.MODEL.CLIP.IMAGE_ENCODER.ROI_HEAD.POOLER_SAMPLING_RATIO,
+            pooler_type=cfg.MODEL.CLIP.IMAGE_ENCODER.ROI_HEAD.POOLER_TYPE,
+        )
+        attrs['roi_pooler'] = roi_pooler
         return attrs
 
     def forward(self, batched_inputs: List[Dict[str, torch.Tensor]]):
@@ -249,21 +264,48 @@ class GeneralizedRCNNClip(GeneralizedRCNN):
     def inference(self, batched_inputs: List[Dict[str, torch.Tensor]]) -> List[Dict[str, torch.Tensor]]:
         index = 0
         instances = super().inference(batched_inputs)[index]
+        text_features = self.get_text_features(batched_inputs, index)
 
-        # extract features if not provided from cache
-        if 'text_descriptions' in batched_inputs[index]:
-            for batch in batched_inputs:
-                batch.update(self.get_text_features(batch.pop('text_descriptions')))
-
-        text_features = [inp['text_features'] for inp in batched_inputs][index]
-
-        top_probs, top_labels = self.patchwise_similarity(
-            batched_inputs[index]['original_image'], instances['instances'].get('pred_boxes'), text_features
-        )
+        if isinstance(self.clip_model.visual, clip.model.VisionTransformer) or not self.roi_pooler:
+            top_probs, top_labels = self.patchwise_similarity(
+                batched_inputs[index]['original_image'], instances['instances'].get('pred_boxes'), text_features
+            )
+        else:
+            image = batched_inputs[index]['original_image']
+            roi_features = self._image_features(image, instances['instances'])
+            top_probs, top_labels = self.similarity(roi_features, text_features)
 
         instances['top_probs'] = top_probs
         instances['top_labels'] = top_labels
         return [instances]
+
+    @torch.no_grad()
+    def _image_features(self, image: np.ndarray, instances: Instances):
+        image = Image.fromarray(image) if not isinstance(image, Image.Image) else image
+        image = T.Compose([T.Resize((800, 1280)), *self.preprocessing.transforms[2:]])(image)
+        image = (image.unsqueeze(0) if image.dim() == 3 else image).to(self.device)
+        im_feats = self._visual_forward(image)
+        roi_feats = self.roi_pooler([im_feats], [instances.pred_boxes])
+        roi_feats = self.clip_model.visual.attnpool(roi_feats)
+        return l2_norm(roi_feats, dim=-1, keepdim=True).float()
+
+    def _visual_forward(self, x: torch.Tensor):
+        model = self.clip_model.visual
+
+        def stem(x):
+            x = model.relu1(model.bn1(model.conv1(x)))
+            x = model.relu2(model.bn2(model.conv2(x)))
+            x = model.relu3(model.bn3(model.conv3(x)))
+            x = model.avgpool(x)
+            return x
+
+        x = x.type(model.conv1.weight.dtype)
+        x = stem(x)
+        x = model.layer1(x)
+        x = model.layer2(x)
+        x = model.layer3(x)
+        x = model.layer4(x)
+        return x
 
     def patchwise_similarity(self, image: np.ndarray, bboxes: Boxes, text_features: torch.Tensor):
         # clip takes takes RGB as input
@@ -277,11 +319,22 @@ class GeneralizedRCNNClip(GeneralizedRCNN):
             im_crops.append(im_crop)
 
         image_features = l2_norm(self.clip_model.encode_image(torch.stack(im_crops).to(self.device)), dim=-1)
-        text_probs = (self.prob_scale.to(self.device) * image_features @ text_features.t()).softmax(dim=-1)
+        return self.similarity(image_features, text_features)
+
+    def similarity(self, image_features, text_features):
+        text_probs = (self.prob_scale.to(self.device) * image_features.float() @ text_features.float().t()).softmax(
+            dim=-1
+        )
         top_probs, top_labels = text_probs.topk(self.topk, dim=1)
         return top_probs, top_labels
 
-    def get_text_features(self, text_descriptions: List[str]) -> Dict[str, torch.Tensor]:
+    def get_text_features(self, batched_inputs: List[Dict[str, torch.Tensor]], index: int = 0) -> torch.Tensor:
+        if 'text_descriptions' in batched_inputs[index]:
+            for batch in batched_inputs:
+                batch.update(self._text_features(batch.pop('text_descriptions')))
+        return [inp['text_features'] for inp in batched_inputs][index]
+
+    def _text_features(self, text_descriptions: List[str]) -> Dict[str, torch.Tensor]:
         assert isinstance(
             text_descriptions, (list, tuple)
         ), f'Expects text descriptions as list but got {text_descriptions}'
