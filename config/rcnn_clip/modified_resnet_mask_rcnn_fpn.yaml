@@ -1,4 +1,4 @@
-_BASE_: "../base_rcnn.yaml"
+_BASE_: "../base_rcnn_fpn.yaml"
 VERSION: 2
 INPUT:
   MIN_SIZE_TRAIN: (240, 320, 480, 640, 672, 704, 736, 768, 800, 1024)
@@ -10,7 +10,6 @@ MODEL:
   META_ARCHITECTURE: "GeneralizedRCNN2"
   PIXEL_MEAN: [122.7709, 116.7460, 104.0937]
   PIXEL_STD: [68.5005, 66.6322, 70.3232]
-  WEIGHTS: 'http://dl.fbaipublicfiles.com/cutler/checkpoints/cutler_cascade_final.pth'
   MASK_ON: True
   CLIP:
     IMAGE_ENCODER:
@@ -19,19 +18,28 @@ MODEL:
       ATTN_OUTPUT_DIM: 1024
       ATTN_NUM_HEADS: 32
       ROI_HEAD:
-        IN_FEATURES: ["res5"]
+        IN_FEATURES: ["p2", "p3", "p4", "p5"]
     TEXT_ENCODER:
       FROZEN: True
   BACKBONE:
-    NAME: "build_modified_resnet_backbone"
+    NAME: "build_modified_resnet_fpn_backbone"
     FREEZE_AT: 5
     CONFIG:
       PRETRAINED: False
       OUT_FEATURES:
+        - layer1
+        - layer2
+        - layer3
         - layer4
       STRIDES:
+        - 4
+        - 8
+        - 16
         - 32
       REMAPS:
+        - res2
+        - res3
+        - res4
         - res5
       REMOVE_LAYERS:
         - attnpool

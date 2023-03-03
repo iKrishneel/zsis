@@ -114,8 +114,8 @@ class TextTransformer(Transformer):
         nn.init.normal_(self.token_embedding.weight, std=0.02)
         nn.init.normal_(self.positional_embedding, std=0.01)
 
-        proj_std = (self.width ** -0.5) * ((2 * self.layers) ** -0.5)
-        attn_std = self.width ** -0.5
+        proj_std = (self.width**-0.5) * ((2 * self.layers) ** -0.5)
+        attn_std = self.width**-0.5
         fc_std = (2 * self.width) ** -0.5
         for block in self.resblocks:
             nn.init.normal_(block.attn.in_proj_weight, std=attn_std)
@@ -124,7 +124,7 @@ class TextTransformer(Transformer):
             nn.init.normal_(block.mlp.c_proj.weight, std=proj_std)
 
         if self.text_projection is not None:
-            nn.init.normal_(self.text_projection, std=self.width ** -0.5)
+            nn.init.normal_(self.text_projection, std=self.width**-0.5)
 
     def forward(self, text: List[torch.Tensor]):
         x = self.token_embedding(text).type(self.dtype)  # [batch_size, n_ctx, d_model]
@@ -156,6 +156,27 @@ class TextTransformer(Transformer):
 
 @META_ARCH_REGISTRY.register()
 class GeneralizedRCNN2(GeneralizedRCNN):
+    def __init__(self, *args, **kwargs):
+        super(GeneralizedRCNN2, self).__init__(*args, **kwargs)
+
+        from detectron2.layers import FrozenBatchNorm2d
+
+        for name, module in self.backbone.named_modules():
+            if not isinstance(module, nn.BatchNorm2d):
+                continue
+
+            for param in module.parameters():
+                if param.requires_grad:
+                    continue
+
+            names = name.split('.')
+            module = getattr(self.backbone, names[0])
+            for name in names[1:-1]:
+                module = getattr(module, name)
+
+            num_features = getattr(module, names[-1]).num_features
+            setattr(module, names[-1], FrozenBatchNorm2d(num_features))
+
     def forward(self, batched_inputs: List[Dict[str, torch.Tensor]]):
         if not self.training:
             return super().forward(batched_inputs)
@@ -166,18 +187,19 @@ class GeneralizedRCNN2(GeneralizedRCNN):
         else:
             gt_instances = None
 
-        with torch.no_grad():
-            self.backbone.eval()
-            features = self.backbone(images.tensor)
+        # with torch.no_grad():
+        #     self.backbone.eval()
+        features = self.backbone(images.tensor)
 
         if self.proposal_generator is not None:
             proposals, proposal_losses = self.proposal_generator(images, features, gt_instances)
         else:
-            assert "proposals" in batched_inputs[0]
-            proposals = [x["proposals"].to(self.device) for x in batched_inputs]
+            assert 'proposals' in batched_inputs[0]
+            proposals = [x['proposals'].to(self.device) for x in batched_inputs]
             proposal_losses = {}
 
         _, detector_losses = self.roi_heads(images, features, proposals, gt_instances)
+
         if self.vis_period > 0:
             storage = get_event_storage()
             if storage.iter % self.vis_period == 0:
