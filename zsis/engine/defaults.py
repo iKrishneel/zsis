@@ -21,7 +21,9 @@ class DefaultPredictor(_DefaultPredictor):
 
     @torch.no_grad()
     def __call__(self, original_image: np.ndarray, text_descriptions: List[str] = None):
-        assert text_descriptions is not None or self._text_descriptions is not None, 'Set or pass the text description'
+        # assert text_descriptions is not None or self._text_descriptions is not None, 'Set or pass the text description'
+        if text_descriptions is None and self._text_features is None:
+            return super().__call__(original_image)
 
         height, width = original_image.shape[:2]
         image = self.process_rgb(original_image)

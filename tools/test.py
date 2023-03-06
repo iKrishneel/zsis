@@ -52,13 +52,15 @@ def main(config_file: str, image: str, weights: str, threshold: float, rgb: bool
     ]
     text_descriptions = [f'This is a photo of a {label}' for label in labels]
 
-    for _ in range(10):
+    for _ in range(1):
         time_start = time.time()
         if cfg.MODEL.META_ARCHITECTURE == 'GeneralizedRCNNClip':
             predictor.set_text_descriptions(text_descriptions)
             predictions = predictor(image)
-        else:
+        elif cfg.MODEL.META_ARCHITECTURE == 'GeneralizedRCNNWithText':
             predictions = predictor(image, text_descriptions)
+        else:
+            predictions = predictor(image)
 
         print(f'\033[32mProcessing time {time.time() - time_start}\033[0m')
 
@@ -66,10 +68,11 @@ def main(config_file: str, image: str, weights: str, threshold: float, rgb: bool
     metadata.thing_classes = labels
     visualizer = Visualizer(image, metadata, instance_mode=ColorMode.IMAGE)
 
-    instances = predictions["instances"].to('cpu')
-    top_probs, top_labels = predictions['top_probs'][:, 0].cpu(), predictions['top_labels'][:, 0].cpu()
-    instances.set('pred_classes', top_labels)
-    instances.set('scores', top_probs)
+    instances = predictions['instances'].to('cpu')
+    if 'top_probs' in predictions:
+        top_probs, top_labels = predictions['top_probs'][:, 0].cpu(), predictions['top_labels'][:, 0].cpu()
+        instances.set('pred_classes', top_labels)
+        instances.set('scores', top_probs)
 
     vis_output = visualizer.draw_instance_predictions(predictions=instances)
 

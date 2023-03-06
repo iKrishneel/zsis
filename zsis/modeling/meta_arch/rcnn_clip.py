@@ -115,8 +115,8 @@ class TextTransformer(Transformer):
         nn.init.normal_(self.token_embedding.weight, std=0.02)
         nn.init.normal_(self.positional_embedding, std=0.01)
 
-        proj_std = (self.width**-0.5) * ((2 * self.layers) ** -0.5)
-        attn_std = self.width**-0.5
+        proj_std = (self.width ** -0.5) * ((2 * self.layers) ** -0.5)
+        attn_std = self.width ** -0.5
         fc_std = (2 * self.width) ** -0.5
         for block in self.resblocks:
             nn.init.normal_(block.attn.in_proj_weight, std=attn_std)
@@ -125,7 +125,7 @@ class TextTransformer(Transformer):
             nn.init.normal_(block.mlp.c_proj.weight, std=proj_std)
 
         if self.text_projection is not None:
-            nn.init.normal_(self.text_projection, std=self.width**-0.5)
+            nn.init.normal_(self.text_projection, std=self.width ** -0.5)
 
     def forward(self, text: List[torch.Tensor]):
         x = self.token_embedding(text).type(self.dtype)  # [batch_size, n_ctx, d_model]
@@ -182,14 +182,17 @@ class GeneralizedRCNN2(GeneralizedRCNN):
         if not self.training:
             return super().forward(batched_inputs)
 
+        import IPython, sys
+
+        IPython.embed(header="Embedded in forward")
+        sys.exit()
+
         images = self.preprocess_image(batched_inputs)
         if 'instances' in batched_inputs[0]:
             gt_instances = [x['instances'].to(self.device) for x in batched_inputs]
         else:
             gt_instances = None
 
-        # with torch.no_grad():
-        #     self.backbone.eval()
         features = self.backbone(images.tensor)
 
         if self.proposal_generator is not None:
