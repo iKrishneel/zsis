@@ -1,0 +1,38 @@
+_BASE_: "base_rcnn_fpn.yaml"
+MODEL:
+  META_ARCHITECTURE: "GeneralizedRCNN2"
+  PIXEL_MEAN: [122.7709, 116.7460, 104.0937]
+  PIXEL_STD: [68.5005, 66.6322, 70.3232]
+  MASK_ON: True
+  BACKBONE:
+    NAME: "build_modified_resnet_fpn_backbone"
+    FREEZE_AT: 5
+    CONFIG:
+      PRETRAINED: False
+      OUT_FEATURES:
+        - layer1
+        - layer2
+        - layer3
+        - layer4
+      STRIDES:
+        - 4
+        - 8
+        - 16
+        - 32
+      REMAPS:
+        - res2
+        - res3
+        - res4
+        - res5
+      REMOVE_LAYERS:
+        - attnpool
+      FREEZE_LAYERS: [conv1, bn1, relu1, conv2, bn2, relu2, conv3, bn3, relu3, avgpool, layer1, layer2, layer3, layer4]
+  RESNETS:
+    LAYERS: [3, 4, 6, 3]
+    DEPTH: 50
+  ROI_HEADS:
+    NUM_CLASSES: 80
+    NAME: "StandardROIHeads"
+    IN_FEATURES: ["p2", "p3", "p4", "p5"]
+SOLVER:
+  IMS_PER_BATCH: 24
