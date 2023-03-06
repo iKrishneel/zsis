@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import click
+import time
 
 from detectron2.data import MetadataCatalog
 from detectron2.modeling import build_model
@@ -25,6 +26,7 @@ def main(config_file: str, image: str, weights: str, threshold: float, rgb: bool
     cfg.merge_from_file(config_file)
 
     cfg.MODEL.CLIP.TOPK = 1
+    cfg.MODEL.CLIP.ARCHITECTURE = "RN50"
     cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = threshold
     cfg.MODEL.CLIP.IMAGE_ENCODER.FROZEN = False
 
@@ -50,11 +52,15 @@ def main(config_file: str, image: str, weights: str, threshold: float, rgb: bool
     ]
     text_descriptions = [f'This is a photo of a {label}' for label in labels]
 
-    if cfg.MODEL.META_ARCHITECTURE == 'GeneralizedRCNNClip':
-        predictor.set_text_descriptions(text_descriptions)
-        predictions = predictor(image)
-    else:
-        predictions = predictor(image, text_descriptions)
+    for _ in range(10):
+        time_start = time.time()
+        if cfg.MODEL.META_ARCHITECTURE == 'GeneralizedRCNNClip':
+            predictor.set_text_descriptions(text_descriptions)
+            predictions = predictor(image)
+        else:
+            predictions = predictor(image, text_descriptions)
+
+        print(f'\033[32mProcessing time {time.time() - time_start}\033[0m')
 
     metadata = MetadataCatalog.get(cfg.DATASETS.TEST[0] if len(cfg.DATASETS.TEST) else "__unused")
     metadata.thing_classes = labels
@@ -78,6 +84,8 @@ def main(config_file: str, image: str, weights: str, threshold: float, rgb: bool
     ax2.axis('off')
 
     plt.show()
+
+    # import IPython;IPython.embed()
 
 
 if __name__ == '__main__':

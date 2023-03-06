@@ -16,7 +16,8 @@ def _build_backbone(cfg):
     layers = cfg.MODEL.RESNETS.LAYERS
     output_dim, heads = 4, 1  # dummpy not used
     model = ModifiedResNet(layers=layers, output_dim=output_dim, heads=heads)
-    return Backbone(cfg, model=model)
+    backbone = Backbone(cfg, model=model)
+    return backbone
 
 
 @BACKBONE_REGISTRY.register()
