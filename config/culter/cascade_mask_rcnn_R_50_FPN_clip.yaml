@@ -6,7 +6,11 @@ MODEL:
   WEIGHTS: 'http://dl.fbaipublicfiles.com/cutler/checkpoints/cutler_cascade_final.pth'
   MASK_ON: True
   CLIP:
-    ARCHITECTURE: "ViT-B/32"
+    ARCHITECTURE: "RN50x4"
+    TOPK: 5
+    IMAGE_ENCODER:
+      ROI_HEAD:
+        POOLER_RESOLUTION: 9
   BACKBONE:
     FREEZE_AT: 0
   RESNETS:
