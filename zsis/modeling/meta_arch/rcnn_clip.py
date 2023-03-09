@@ -166,9 +166,12 @@ class GeneralizedRCNN2(GeneralizedRCNN):
             if not isinstance(module, nn.BatchNorm2d):
                 continue
 
+            requires_grad = False
             for param in module.parameters():
-                if param.requires_grad:
-                    continue
+                requires_grad |= param.requires_grad
+
+            if requires_grad:
+                continue
 
             names = name.split('.')
             module = getattr(self.backbone, names[0])
