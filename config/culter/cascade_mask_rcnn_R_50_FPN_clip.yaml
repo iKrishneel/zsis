@@ -6,8 +6,9 @@ MODEL:
   WEIGHTS: 'http://dl.fbaipublicfiles.com/cutler/checkpoints/cutler_cascade_final.pth'
   MASK_ON: True
   CLIP:
-    ARCHITECTURE: "RN50x4"
-    TOPK: 5
+    ARCHITECTURE: "ViT-L/14"
+    TOPK: 1
+    CROP_SCALE: 1.0
     IMAGE_ENCODER:
       ROI_HEAD:
         POOLER_RESOLUTION: 9

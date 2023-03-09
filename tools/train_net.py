@@ -1,11 +1,13 @@
 #!/usr/bin/env python
 import os
+import torch
 
 import detectron2.utils.comm as comm
 from detectron2.checkpoint import DetectionCheckpointer
 from detectron2.data import DatasetCatalog, MetadataCatalog, build_detection_train_loader
 from detectron2.data.datasets import load_coco_json
 from detectron2.engine import DefaultTrainer, default_argument_parser, default_setup, hooks, launch
+from detectron2.solver.build import get_default_optimizer_params, maybe_add_gradient_clipping
 from detectron2.evaluation import (
     COCOEvaluator,
     COCOPanopticEvaluator,
@@ -24,6 +26,29 @@ class Trainer(DefaultTrainer):
     def build_train_loader(cls, cfg):
         mapper = DatasetMapper(cfg)
         return build_detection_train_loader(cfg, mapper=mapper)
+
+    @classmethod
+    def build_optimizer(cls, cfg, model):
+        assert cfg.SOLVER.NAME in ['SGD', 'Adam'], f'Unsupported Solver {cfg.SOLVER.NAME}'
+        if cfg.SOLVER.NAME == 'SGD':
+            return cls.build_optimizer(cfg, model)
+
+        params = get_default_optimizer_params(
+            model,
+            base_lr=cfg.SOLVER.BASE_LR,
+            weight_decay_norm=cfg.SOLVER.WEIGHT_DECAY_NORM,
+            bias_lr_factor=cfg.SOLVER.BIAS_LR_FACTOR,
+            weight_decay_bias=cfg.SOLVER.WEIGHT_DECAY_BIAS,
+        )
+
+        optim_args = {
+            'params': params,
+            'lr': cfg.SOLVER.BASE_LR,
+            'betas': (0.9, 0.999),
+            'eps': 1e-8,
+            'weight_decay': cfg.SOLVER.WEIGHT_DECAY,
+        }
+        return maybe_add_gradient_clipping(cfg, torch.optim.Adam(**optim_args))
 
     @classmethod
     def build_evaluator(cls, cfg, dataset_name, output_folder=None):
@@ -67,7 +92,7 @@ def main(args):
     if args.name is not None:
         json_file = os.path.join(args.root, 'trainval.json')
         DatasetCatalog.register(args.name, lambda: load_coco_json(json_file, args.root, args.name))
-        MetadataCatalog.get(args.name).set(json_file=json_file, image_root=args.root, evaluator_type="coco", **{})
+        MetadataCatalog.get(args.name).set(json_file=json_file, image_root=args.root, evaluator_type='coco', **{})
 
     if args.eval_only:
         model = Trainer.build_model(cfg)
