@@ -31,7 +31,7 @@ class Trainer(DefaultTrainer):
     def build_optimizer(cls, cfg, model):
         assert cfg.SOLVER.NAME in ['SGD', 'Adam'], f'Unsupported Solver {cfg.SOLVER.NAME}'
         if cfg.SOLVER.NAME == 'SGD':
-            return cls.build_optimizer(cfg, model)
+            return super().build_optimizer(cfg, model)
 
         params = get_default_optimizer_params(
             model,
