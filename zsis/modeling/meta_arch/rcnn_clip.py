@@ -115,8 +115,8 @@ class TextTransformer(Transformer):
         nn.init.normal_(self.token_embedding.weight, std=0.02)
         nn.init.normal_(self.positional_embedding, std=0.01)
 
-        proj_std = (self.width ** -0.5) * ((2 * self.layers) ** -0.5)
-        attn_std = self.width ** -0.5
+        proj_std = (self.width**-0.5) * ((2 * self.layers) ** -0.5)
+        attn_std = self.width**-0.5
         fc_std = (2 * self.width) ** -0.5
         for block in self.resblocks:
             nn.init.normal_(block.attn.in_proj_weight, std=attn_std)
@@ -125,7 +125,7 @@ class TextTransformer(Transformer):
             nn.init.normal_(block.mlp.c_proj.weight, std=proj_std)
 
         if self.text_projection is not None:
-            nn.init.normal_(self.text_projection, std=self.width ** -0.5)
+            nn.init.normal_(self.text_projection, std=self.width**-0.5)
 
     def forward(self, text: List[torch.Tensor]):
         x = self.token_embedding(text).type(self.dtype)  # [batch_size, n_ctx, d_model]
@@ -184,11 +184,6 @@ class GeneralizedRCNN2(GeneralizedRCNN):
     def forward(self, batched_inputs: List[Dict[str, torch.Tensor]]):
         if not self.training:
             return super().forward(batched_inputs)
-
-        import IPython, sys
-
-        IPython.embed(header="Embedded in forward")
-        sys.exit()
 
         images = self.preprocess_image(batched_inputs)
         if 'instances' in batched_inputs[0]:
@@ -250,14 +245,18 @@ class GeneralizedRCNNClip(GeneralizedRCNN):
         attrs['image_format'] = cfg.INPUT.FORMAT
 
         # TODO: organize
-        from detectron2.modeling.poolers import ROIPooler
+        if isinstance(attrs['clip_model'].visual, clip.model.VisionTransformer):
+            from detectron2.modeling.poolers import ROIPooler
 
-        roi_pooler = ROIPooler(
-            output_size=cfg.MODEL.CLIP.IMAGE_ENCODER.ROI_HEAD.POOLER_RESOLUTION,
-            scales=(1.0 / 32.0,),
-            sampling_ratio=cfg.MODEL.CLIP.IMAGE_ENCODER.ROI_HEAD.POOLER_SAMPLING_RATIO,
-            pooler_type=cfg.MODEL.CLIP.IMAGE_ENCODER.ROI_HEAD.POOLER_TYPE,
-        )
+            roi_pooler = ROIPooler(
+                output_size=cfg.MODEL.CLIP.IMAGE_ENCODER.ROI_HEAD.POOLER_RESOLUTION,
+                scales=(1.0 / 32.0,),
+                sampling_ratio=cfg.MODEL.CLIP.IMAGE_ENCODER.ROI_HEAD.POOLER_SAMPLING_RATIO,
+                pooler_type=cfg.MODEL.CLIP.IMAGE_ENCODER.ROI_HEAD.POOLER_TYPE,
+            )
+        else:
+            roi_pooler = None
+
         attrs['roi_pooler'] = roi_pooler
         return attrs
 
