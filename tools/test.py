@@ -15,6 +15,22 @@ from zsis.engine import DefaultPredictor
 import matplotlib.pyplot as plt
 
 
+_labels = [
+    'fish',
+    'white leaf',
+    'greenish leaf',
+    'white bean',
+    'redish bean',
+    'yellowish cashew nut',
+    'nut',
+    'broccoli',
+    'white plate',
+    'yellowish bean',
+    'greenish bean',
+    'black keyboard',
+]
+
+
 @click.command()
 @click.option('--config-file', required=False, default='../config/culter/cascade_mask_rcnn_R_50_FPN_clip.yaml')
 @click.option('--image', required=True)
@@ -36,23 +52,9 @@ def main(config_file: str, image: str, weights: str, threshold: float, rgb: bool
     image = read_image(image, 'RGB' if rgb else 'BGR')
 
     predictor = DefaultPredictor(cfg)
-    labels = [
-        'fish',
-        'white leaf',
-        'greenish leaf',
-        'white bean',
-        'redish bean',
-        'yellowish cashew nut',
-        'nut',
-        'broccoli',
-        'white plate',
-        'yellowish bean',
-        'greenish bean',
-        'black keyboard',
-    ]
-    text_descriptions = [f'This is a photo of a {label}' for label in labels]
+    text_descriptions = [f'This is a photo of a {label}' for label in _labels]
 
-    for _ in range(1):
+    for _ in range(10):
         time_start = time.time()
         if cfg.MODEL.META_ARCHITECTURE == 'GeneralizedRCNNClip':
             predictor.set_text_descriptions(text_descriptions)
@@ -65,7 +67,10 @@ def main(config_file: str, image: str, weights: str, threshold: float, rgb: bool
         print(f'\033[32mProcessing time {time.time() - time_start}\033[0m')
 
     metadata = MetadataCatalog.get(cfg.DATASETS.TEST[0] if len(cfg.DATASETS.TEST) else "__unused")
-    metadata.thing_classes = labels
+    try:
+        metadata.thing_classes = _labels
+    except AssertionError:
+        pass
     visualizer = Visualizer(image, metadata, instance_mode=ColorMode.IMAGE)
 
     instances = predictions['instances'].to('cpu')

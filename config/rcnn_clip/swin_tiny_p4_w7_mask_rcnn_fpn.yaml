@@ -1,15 +1,16 @@
 _BASE_: "../base_rcnn_fpn.yaml"
 VERSION: 2
 INPUT:
-  MIN_SIZE_TRAIN: (240, 320, 480, 640, 672, 704, 736, 768, 800, 1024)
-  MAX_SIZE_TRAIN: 1333
+  MAX_SIZE_TRAIN: 1120
+  MAX_SIZE_TEST: 1120
+  MIN_SIZE_TRAIN:
+    - 1120
+  MIN_SIZE_TEST: 1120
+  FIXED_INPUT_SIZE: true
   MASK_FORMAT: "bitmask"
-  FORMAT: "RGB"
-  FIXED_INPUT_SIZE: False  
+  FORMAT: BGR
 MODEL:
-  META_ARCHITECTURE: "GeneralizedRCNN2"
-  PIXEL_MEAN: [0.48145466, 0.4578275, 0.40821073] # [122.7709, 116.7460, 104.0937]
-  PIXEL_STD: [0.26862954, 0.26130258, 0.27577711] # [68.5005, 66.6322, 70.3232]
+  META_ARCHITECTURE: "GeneralizedRCNN"
   MASK_ON: True
   CLIP:
     IMAGE_ENCODER:
@@ -22,33 +23,34 @@ MODEL:
     TEXT_ENCODER:
       FROZEN: True
   BACKBONE:
-    NAME: "build_modified_resnet_fpn_backbone"
-    FREEZE_AT: 5
     CONFIG:
-      PRETRAINED: False
       OUT_FEATURES:
-        - layer1
-        - layer2
-        - layer3
-        - layer4
+        - layers.0.blocks.1
+        - layers.1.blocks.1
+        - layers.2.blocks.5
+        - layers.3.blocks.1
+      PRETRAINED: True
+      REMAPS:
+        - block1
+        - block2
+        - block3
+        - block4
+      REMOVE_LAYERS:
+        - norm
+        - avgpool
+        - head
       STRIDES:
         - 4
         - 8
         - 16
         - 32
-      REMAPS:
-        - res2
-        - res3
-        - res4
-        - res5
-      REMOVE_LAYERS:
-        - attnpool
-      FREEZE_LAYERS: [conv1, bn1, relu1, conv2, bn2, relu2, conv3, bn3, relu3, avgpool, layer1, layer2, layer3, layer4]
-  RESNETS:
-    LAYERS: [3, 4, 6, 3]
-    DEPTH: 50
-    NORM: "SyncBN"
-    STRIDE_IN_1X1: False
+      CHANNELS:
+        - 96
+        - 192
+        - 384
+        - 768
+    FREEZE_AT: 0
+    NAME: "build_swin_tiny_patch4_window7_224_fpn_backbone"
   ROI_BOX_HEAD:
     CLS_AGNOSTIC_BBOX_REG: True
   ROI_HEADS:
@@ -62,11 +64,16 @@ MODEL:
   RPN:
     POST_NMS_TOPK_TRAIN: 4000
     NMS_THRESH: 0.65
+  FPN:
+    IN_FEATURES:
+      - block1
+      - block2
+      - block3
+      - block4
 DATASETS:
   TRAIN: ["coco_2017_train", ]
   TEST: []
 SOLVER:
-  NAME: Adam
   IMS_PER_BATCH: 16
   BASE_LR: 0.01
   WEIGHT_DECAY: 0.00005
