@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 
 
 @click.command()
-@click.option('--config-file', required=False, default='../../config/culter/cascade_mask_rcnn_R_50_FPN_clip.yaml')
+@click.option('--config-file', required=False, default='../config/culter/cascade_mask_rcnn_R_50_FPN_clip.yaml')
 @click.option('--image', required=True)
 @click.option('--weights', required=False)
 @click.option('--threshold', default=0.5)
@@ -26,7 +26,7 @@ def main(config_file: str, image: str, weights: str, threshold: float, rgb: bool
     cfg.merge_from_file(config_file)
 
     cfg.MODEL.CLIP.TOPK = 1
-    cfg.MODEL.CLIP.ARCHITECTURE = "RN50"
+    cfg.MODEL.CLIP.ARCHITECTURE = "RN50x4"
     cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = threshold
     cfg.MODEL.CLIP.IMAGE_ENCODER.FROZEN = False
 
@@ -75,6 +75,8 @@ def main(config_file: str, image: str, weights: str, threshold: float, rgb: bool
         instances.set('scores', top_probs)
 
     vis_output = visualizer.draw_instance_predictions(predictions=instances)
+
+    image = image[:, :, ::-1] if not rgb else image
 
     plt.close()
     _, (ax1, ax2) = plt.subplots(2, 1)

@@ -270,6 +270,10 @@ class GeneralizedRCNNClip(GeneralizedRCNN):
     def inference(self, batched_inputs: List[Dict[str, torch.Tensor]]) -> List[Dict[str, torch.Tensor]]:
         index = 0
         instances = super().inference(batched_inputs)[index]
+
+        if len(instances['instances']) == 0:
+            return
+
         text_features = self.get_text_features(batched_inputs, index)
 
         if isinstance(self.clip_model.visual, clip.model.VisionTransformer) or not self.roi_pooler:
