@@ -28,3 +28,12 @@ To run the Culter + CLIP demo
 ```bash
 $ python tools/test.py --config-file config/culter/cascade_mask_rcnn_R_50_FPN_clip.yaml --image PATH_TO_IMAGE --labels LIST_OF_VOCABS
 ```
+
+##### Example
+Run the following example command. Note that it will first download two sets of weights; one for Cutler and other for CLIP. 
+
+```bash
+$ python tools/test.py --config-file config/culter/cascade_mask_rcnn_R_50_FPN_clip.yaml --image assets/images/bus.jpg --labels bus,car,people,truck,cat,dot
+```
+The example will produce following results.
+<img src="/assets/images/bus_results.jpg" alt="Results on the bus image"/>
