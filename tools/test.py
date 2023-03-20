@@ -15,34 +15,22 @@ from zsis.engine import DefaultPredictor
 import matplotlib.pyplot as plt
 
 
-_labels = [
-    'fish',
-    'white leaf',
-    'greenish leaf',
-    'white bean',
-    'redish bean',
-    'yellowish cashew nut',
-    'nut',
-    'broccoli',
-    'white plate',
-    'yellowish bean',
-    'greenish bean',
-    'black keyboard',
-]
-
-
 @click.command()
-@click.option('--config-file', required=False, default='../config/culter/cascade_mask_rcnn_R_50_FPN_clip.yaml')
+@click.option('--config-file', required=True)
 @click.option('--image', required=True)
+@click.option('--labels', type=str, required=True)
 @click.option('--weights', required=False)
 @click.option('--threshold', default=0.5)
 @click.option('--rgb/--bgr', default=True)
-def main(config_file: str, image: str, weights: str, threshold: float, rgb: bool) -> None:
+def main(config_file: str, image: str, labels: str, weights: str, threshold: float, rgb: bool) -> None:
+    labels = labels.split(',')
+    assert len(labels) > 0, f'labels is required.'
+
     cfg = get_cfg()
     cfg.merge_from_file(config_file)
 
     cfg.MODEL.CLIP.TOPK = 1
-    cfg.MODEL.CLIP.ARCHITECTURE = "RN50x4"
+    cfg.MODEL.CLIP.ARCHITECTURE = "ViT-B/16"
     cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = threshold
     cfg.MODEL.CLIP.IMAGE_ENCODER.FROZEN = False
 
@@ -52,9 +40,9 @@ def main(config_file: str, image: str, weights: str, threshold: float, rgb: bool
     image = read_image(image, 'RGB' if rgb else 'BGR')
 
     predictor = DefaultPredictor(cfg)
-    text_descriptions = [f'This is a photo of a {label}' for label in _labels]
+    text_descriptions = [f'This is a photo of a {label}' for label in labels]
 
-    for _ in range(10):
+    for _ in range(1):
         time_start = time.time()
         if cfg.MODEL.META_ARCHITECTURE == 'GeneralizedRCNNClip':
             predictor.set_text_descriptions(text_descriptions)
@@ -68,7 +56,7 @@ def main(config_file: str, image: str, weights: str, threshold: float, rgb: bool
 
     metadata = MetadataCatalog.get(cfg.DATASETS.TEST[0] if len(cfg.DATASETS.TEST) else "__unused")
     try:
-        metadata.thing_classes = _labels
+        metadata.thing_classes = labels
     except AssertionError:
         pass
     visualizer = Visualizer(image, metadata, instance_mode=ColorMode.IMAGE)
@@ -84,7 +72,7 @@ def main(config_file: str, image: str, weights: str, threshold: float, rgb: bool
     image = image[:, :, ::-1] if not rgb else image
 
     plt.close()
-    _, (ax1, ax2) = plt.subplots(2, 1)
+    _, (ax1, ax2) = plt.subplots(1, 2)
     ax1.imshow(image)
     ax1.set_title('Input Image')
     ax1.axis('off')
