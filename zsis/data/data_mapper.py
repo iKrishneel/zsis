@@ -36,6 +36,8 @@ class DatasetMapper(_DM):
             'This is a photo of a %s',
         )
 
+        import IPython; IPython.embed()
+
     @classmethod
     def from_config(cls, cfg, is_train: bool = True) -> Dict[str, Any]:
         ret = _DM.from_config(cfg, is_train)
