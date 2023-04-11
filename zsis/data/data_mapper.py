@@ -13,7 +13,7 @@ from detectron2.data import transforms as T
 from detectron2.data.dataset_mapper import DatasetMapper as _DM
 
 
-def get_loader(filename:str) -> Callable:
+def get_loader(filename: str) -> Callable:
     if '.json' in filename:
         module, func = 'json', 'load'
     elif '.yaml' in filename or '.yml' in filename:
@@ -54,7 +54,9 @@ class DatasetMapper(_DM):
         ret = _DM.from_config(cfg, is_train)
         ret['is_class_agnostic'] = cfg.MODEL.ROI_BOX_HEAD.CLS_AGNOSTIC_BBOX_REG
         ret['with_text'] = cfg.MODEL.META_ARCHITECTURE in [
-            'GeneralizedRCNNWithText', 'GeneralizedRCNNClip', 'GeneralizedRCNNClipPrompter'
+            'GeneralizedRCNNWithText',
+            'GeneralizedRCNNClip',
+            'GeneralizedRCNNClipPrompter',
         ]
 
         # TODO: Use argument for size

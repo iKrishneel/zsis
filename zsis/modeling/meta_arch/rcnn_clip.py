@@ -47,6 +47,7 @@ def symmetric_losses(logits: torch.Tensor) -> Dict[str, torch.Tensor]:
     def cross_entropy(logits: torch.Tensor, dim: int) -> torch.Tensor:
         log_probs = nn.functional.log_softmax(logits, dim=dim)
         return -torch.mean(torch.diag(log_probs))
+
     return {'loss_clip': ((cross_entropy(logits, 0) + cross_entropy(logits, 1)) / 2.0) * 1.0}
 
 
@@ -113,6 +114,7 @@ class GeneralizedRCNNClip(GeneralizedRCNN):
     """
     RCNN class with CLIP
     """
+
     @configurable
     def __init__(self, **kwargs):
         clip_model = kwargs.pop('clip_model', None)
@@ -231,7 +233,7 @@ class GeneralizedRCNNClip(GeneralizedRCNN):
         return top_probs, top_labels
 
     def get_image_rois(self, image: np.ndarray, bboxes: Boxes) -> List[torch.Tensor]:
-        # clip takes takes RGB as input        
+        # clip takes takes RGB as input
         if self.image_format == 'BGR':
             image = image[:, :, ::-1]
         im_crops = []
@@ -265,12 +267,13 @@ class GeneralizedRCNNClipPrompter(GeneralizedRCNNClip):
     """
     Learns prompter with CLIP
     """
+
     @configurable
     def __init__(self, *args, **kwargs):
         roi_pooler = kwargs.pop('roi_pooler', None)
         frozen_image_encoder = kwargs.pop('frozen_image_encoder', False)
         frozen_text_encoder = kwargs.pop('frozen_text_encoder', False)
-        
+
         super(GeneralizedRCNNClipPrompter, self).__init__(*args, **kwargs)
 
         # self.transformer = self.clip_model.transformer
@@ -299,12 +302,12 @@ class GeneralizedRCNNClipPrompter(GeneralizedRCNNClip):
     @classmethod
     def from_config(cls, cfg) -> Dict[str, Any]:
         attrs = super().from_config(cfg)
-        # backbone = attrs['backbone']        
+        # backbone = attrs['backbone']
         # attrs['roi_pooler'] = build_roi_pooler(cfg, backbone.output_shape())
         attrs['frozen_image_encoder'] = cfg.MODEL.CLIP.IMAGE_ENCODER.FROZEN
-        attrs['frozen_text_encoder'] = cfg.MODEL.CLIP.TEXT_ENCODER.FROZEN        
+        attrs['frozen_text_encoder'] = cfg.MODEL.CLIP.TEXT_ENCODER.FROZEN
         return attrs
-        
+
     @classmethod
     def build_clip_model(cls, cfg) -> Dict[str, Any]:
         from zsis.modeling.layers import build_prompter_transformer
@@ -329,7 +332,7 @@ class GeneralizedRCNNClipPrompter(GeneralizedRCNNClip):
         transformer.load_state_dict(state_dict, strict=True)
         setattr(ret_val['clip_model'], 'transformer', transformer)
         # clip_model.transformer = transformer
-        
+
         for attr in keys:
             delattr(clip_model, attr)
 
@@ -383,7 +386,7 @@ class GeneralizedRCNNClipPrompter(GeneralizedRCNNClip):
 
         # losses, roi_features, proposals = self.forward_images(batched_inputs)
         proposals = [batched_input['instances'] for batched_input in batched_inputs]
-        
+
         if self.clip_model.transformer.logit_scale.requires_grad:
             # clamp to ln(100), as in the paper
             with torch.no_grad():
@@ -394,7 +397,7 @@ class GeneralizedRCNNClipPrompter(GeneralizedRCNNClip):
         roi_embeddings = []
         for proposal, batched_input in zip(proposals, batched_inputs):
             image = batched_input['image']
-            bboxes = proposal.gt_boxes # proposal_boxes
+            bboxes = proposal.gt_boxes  # proposal_boxes
 
             im_crops = []
             for bbox in bboxes:
@@ -413,7 +416,7 @@ class GeneralizedRCNNClipPrompter(GeneralizedRCNNClip):
         roi_embeddings = roi_embeddings / roi_embeddings.norm(dim=-1, keepdim=True)
 
         # text embedding
-        key = 'gt_descriptions' if self.training else 'descriptions'        
+        key = 'gt_descriptions' if self.training else 'descriptions'
         text_descriptions = []
         for batched_input in batched_inputs:
             text_descriptions.extend(batched_input[key])
@@ -430,10 +433,10 @@ class GeneralizedRCNNClipPrompter(GeneralizedRCNNClip):
         losses = {'loss_clip': loss}
 
         # import IPython, sys; IPython.embed(); sys.exit()
-        
+
         print(symmetric_losses(logits), losses)
         return losses
-    
+
 
 @META_ARCH_REGISTRY.register()
 class GeneralizedRCNNWithText(GeneralizedRCNN):

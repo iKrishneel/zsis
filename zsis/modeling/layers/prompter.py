@@ -18,7 +18,6 @@ T: Type[torch.Tensor] = torch.Tensor
 
 
 class PrompterTextTransformer(_TextTransformer):
-
     def __init__(self, *args, **kwargs):
         n_ctx = kwargs.pop('additional_context_lenght', 8)
         assert n_ctx > 0, 'Context lenght must be greater then 0'
@@ -30,7 +29,7 @@ class PrompterTextTransformer(_TextTransformer):
         ctx_vectors = torch.empty(n_ctx, transformer_width, dtype=self.dtype)
         nn.init.normal_(ctx_vectors, std=0.02)
         self.ctx = nn.Parameter(ctx_vectors)
-                
+
     def forward(self, prompts: T, text_tokens: T) -> T:
         x = prompts + self.positional_embedding.type(self.dtype)
         x = x.permute(1, 0, 2)  # NLD -> LND
@@ -44,11 +43,11 @@ class PrompterTextTransformer(_TextTransformer):
         text_tokens = self.tokenize(texts)
         embedding = self.token_embedding(text_tokens)
 
-        prefix, suffix = embedding[:, :1, :], embedding[:, 1 + self.ctx.shape[0]:, :]
+        prefix, suffix = embedding[:, :1, :], embedding[:, 1 + self.ctx.shape[0] :, :]
 
         ctx = self.ctx
         ctx = ctx[None].expand(len(texts), -1, -1) if ctx.dim() == 2 else ctx
-        
+
         prompts = torch.cat([prefix, ctx, suffix], dim=1)
         return self.forward(prompts, text_tokens)
 
@@ -63,7 +62,7 @@ def build_prompter_transformer(cfg: CfgNode) -> PrompterTextTransformer:
     Builds the promp learning module
     """
     from .clip_model import build_attention_mask
-    
+
     vocab_size = cfg.MODEL.CLIP.TEXT_ENCODER.VOCAB_SIZE
     context_length = cfg.MODEL.CLIP.TEXT_ENCODER.CONTEXT_LENGTH
     embed_dim = cfg.MODEL.CLIP.TEXT_ENCODER.EMBED_DIM

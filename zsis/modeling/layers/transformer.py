@@ -63,7 +63,7 @@ class TextTransformer(Transformer):
     def tokenize(self, text: List[str]) -> torch.Tensor:
         # TODO: Fix the device
         return clip.tokenize(text).cuda()
-        
+
     @property
     def embed_dim(self) -> int:
         return self._embed_dim
@@ -74,7 +74,6 @@ class TextTransformer(Transformer):
 
 
 def build_text_encoder(cfg: CfgNode) -> TextTransformer:
-
     from .clip_model import build_attention_mask
 
     vocab_size = cfg.MODEL.CLIP.TEXT_ENCODER.VOCAB_SIZE
