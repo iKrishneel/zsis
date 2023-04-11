@@ -30,7 +30,7 @@ def main(config_file: str, image: str, labels: str, weights: str, threshold: flo
     cfg.merge_from_file(config_file)
 
     cfg.MODEL.CLIP.TOPK = 1
-    cfg.MODEL.CLIP.ARCHITECTURE = "ViT-B/16"
+    cfg.MODEL.CLIP.ARCHITECTURE = "RN50"
     cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = threshold
     cfg.MODEL.CLIP.IMAGE_ENCODER.FROZEN = False
 

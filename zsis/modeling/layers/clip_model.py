@@ -1,10 +1,17 @@
 #!/usr/bin/env python
 
 from typing import Any, Dict
+
+import numpy as np
+import torch
 from detectron2.config import CfgNode
+from detectron2.utils.logger import setup_logger
 
 import clip
 from clip.model import AttentionPool2d
+
+
+logger = setup_logger(name='clip_model')
 
 
 def build_clip_model(cfg: CfgNode) -> Dict[str, Any]:

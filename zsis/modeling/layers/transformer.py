@@ -1,10 +1,14 @@
 #!/usr/bin/env python
 
 from typing import List
+
+import numpy as np
 import torch
 import torch.nn as nn
 
 from detectron2.config import CfgNode
+
+import clip
 from clip.model import Transformer, LayerNorm
 
 
@@ -70,6 +74,9 @@ class TextTransformer(Transformer):
 
 
 def build_text_encoder(cfg: CfgNode) -> TextTransformer:
+
+    from .clip_model import build_attention_mask
+
     vocab_size = cfg.MODEL.CLIP.TEXT_ENCODER.VOCAB_SIZE
     context_length = cfg.MODEL.CLIP.TEXT_ENCODER.CONTEXT_LENGTH
     embed_dim = cfg.MODEL.CLIP.TEXT_ENCODER.EMBED_DIM

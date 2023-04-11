@@ -22,7 +22,7 @@ from ..roi_heads import build_roi_pooler
 __all__ = ['GeneralizedRCNNWithText', 'GeneralizedRCNNClip']
 
 
-logger = setup_logger(name='clip')
+logger = setup_logger(name='clip_rcnn')
 
 
 def get_roi_size(bbox: np.ndarray, im_size: List[int], scale: float = 1.0, use_max_len: bool = False) -> np.ndarray:
@@ -41,6 +41,13 @@ def get_roi_size(bbox: np.ndarray, im_size: List[int], scale: float = 1.0, use_m
 
 def l2_norm(x: torch.Tensor, dim: int = 1, keepdim: bool = True) -> torch.Tensor:
     return x / x.norm(dim=dim, keepdim=keepdim)
+
+
+def symmetric_losses(logits: torch.Tensor) -> Dict[str, torch.Tensor]:
+    def cross_entropy(logits: torch.Tensor, dim: int) -> torch.Tensor:
+        log_probs = nn.functional.log_softmax(logits, dim=dim)
+        return -torch.mean(torch.diag(log_probs))
+    return {'loss_clip': ((cross_entropy(logits, 0) + cross_entropy(logits, 1)) / 2.0) * 1.0}
 
 
 @META_ARCH_REGISTRY.register()
@@ -103,6 +110,9 @@ class GeneralizedRCNN2(GeneralizedRCNN):
 
 @META_ARCH_REGISTRY.register()
 class GeneralizedRCNNClip(GeneralizedRCNN):
+    """
+    RCNN class with CLIP
+    """
     @configurable
     def __init__(self, **kwargs):
         clip_model = kwargs.pop('clip_model', None)
@@ -125,7 +135,7 @@ class GeneralizedRCNNClip(GeneralizedRCNN):
     @classmethod
     def from_config(cls, cfg) -> Dict[str, Any]:
         attrs = super().from_config(cfg)
-        attrs.update(build_clip_model(cfg))
+        attrs.update(cls.build_clip_model(cfg))
         attrs['topk'] = cfg.MODEL.CLIP.TOPK
         attrs['topk'] = cfg.MODEL.CLIP.TOPK
         attrs['prob_scale'] = cfg.MODEL.CLIP.PROB_SCALE
@@ -133,7 +143,7 @@ class GeneralizedRCNNClip(GeneralizedRCNN):
         attrs['image_format'] = cfg.INPUT.FORMAT
 
         # TODO: organize
-        if isinstance(attrs['clip_model'].visual, clip.model.VisionTransformer):
+        if isinstance(attrs['clip_model'].visual, clip.model.ModifiedResNet):
             from detectron2.modeling.poolers import ROIPooler
 
             roi_pooler = ROIPooler(
@@ -147,6 +157,10 @@ class GeneralizedRCNNClip(GeneralizedRCNN):
 
         attrs['roi_pooler'] = roi_pooler
         return attrs
+
+    @classmethod
+    def build_clip_model(cls, cfg):
+        return build_clip_model(cfg)
 
     def forward(self, batched_inputs: List[Dict[str, torch.Tensor]]):
         if not self.training:
@@ -180,7 +194,7 @@ class GeneralizedRCNNClip(GeneralizedRCNN):
     def _image_features(self, image: np.ndarray, instances: Instances):
         image = Image.fromarray(image) if not isinstance(image, Image.Image) else image
         image = T.Compose([T.Resize((800, 1280)), *self.preprocessing.transforms[2:]])(image)
-        image = (image.unsqueeze(0) if image.dim() == 3 else image).to(self.device)
+        image = (image[None] if image.dim() == 3 else image).to(self.device)
         im_feats = self._visual_forward(image)
         roi_feats = self.roi_pooler([im_feats], [instances.pred_boxes])
         roi_feats = self.clip_model.visual.attnpool(roi_feats)
@@ -205,16 +219,7 @@ class GeneralizedRCNNClip(GeneralizedRCNN):
         return x
 
     def patchwise_similarity(self, image: np.ndarray, bboxes: Boxes, text_features: torch.Tensor):
-        # clip takes takes RGB as input
-        if self.image_format == 'BGR':
-            image = image[:, :, ::-1]
-        im_crops = []
-        for bbox in bboxes:
-            bbox = bbox.int().cpu().numpy()
-            x1, y1, x2, y2 = get_roi_size(bbox, image.shape[:2], scale=self.crop_scale, use_max_len=False)
-            im_crop = self.preprocessing(Image.fromarray(image[y1:y2, x1:x2].copy()))
-            im_crops.append(im_crop)
-
+        im_crops = self.get_image_rois(image, bboxes)
         image_features = l2_norm(self.clip_model.encode_image(torch.stack(im_crops).to(self.device)), dim=-1)
         return self.similarity(image_features, text_features)
 
@@ -224,6 +229,18 @@ class GeneralizedRCNNClip(GeneralizedRCNN):
         )
         top_probs, top_labels = text_probs.topk(self.topk, dim=1)
         return top_probs, top_labels
+
+    def get_image_rois(self, image: np.ndarray, bboxes: Boxes) -> List[torch.Tensor]:
+        # clip takes takes RGB as input        
+        if self.image_format == 'BGR':
+            image = image[:, :, ::-1]
+        im_crops = []
+        for bbox in bboxes:
+            bbox = bbox.int().cpu().numpy()
+            x1, y1, x2, y2 = get_roi_size(bbox, image.shape[:2], scale=self.crop_scale, use_max_len=False)
+            im_crop = self.preprocessing(Image.fromarray(image[y1:y2, x1:x2].copy()))
+            im_crops.append(im_crop)
+        return_crops
 
     def get_text_features(self, batched_inputs: List[Dict[str, torch.Tensor]], index: int = 0) -> torch.Tensor:
         if 'text_descriptions' in batched_inputs[index]:
@@ -242,6 +259,181 @@ class GeneralizedRCNNClip(GeneralizedRCNN):
         text_features = l2_norm(self.clip_model.encode_text(text_tokens), dim=-1)
         return {'text_features': text_features, 'text_tokens': text_tokens}
 
+
+@META_ARCH_REGISTRY.register()
+class GeneralizedRCNNClipPrompter(GeneralizedRCNNClip):
+    """
+    Learns prompter with CLIP
+    """
+    @configurable
+    def __init__(self, *args, **kwargs):
+        roi_pooler = kwargs.pop('roi_pooler', None)
+        frozen_image_encoder = kwargs.pop('frozen_image_encoder', False)
+        frozen_text_encoder = kwargs.pop('frozen_text_encoder', False)
+        
+        super(GeneralizedRCNNClipPrompter, self).__init__(*args, **kwargs)
+
+        # self.transformer = self.clip_model.transformer
+        self.roi_pooler = roi_pooler
+
+        # TEMP:
+        del self.backbone
+        del self.proposal_generator
+        del self.roi_pooler
+        del self.roi_heads
+
+        # self.preprocessing = T.Compose([self.preprocessing.transforms[0], self.preprocessing.transforms[-1]])
+        self.preprocessing = T.Compose([self.preprocessing.transforms[-1]])
+
+        if frozen_image_encoder:
+            logger.info('The Image Encoder is completely frozen')
+            for param in self.clip_model.visual.parameters():
+                param.requires_grad_(False)
+
+        if frozen_text_encoder:
+            logger.info('The text transformer is completely frozen')
+            for param in self.transformer.parameters():
+                param.requires_grad_(False)
+            # transformer.logit_scale.requires_grad_(True)
+
+    @classmethod
+    def from_config(cls, cfg) -> Dict[str, Any]:
+        attrs = super().from_config(cfg)
+        # backbone = attrs['backbone']        
+        # attrs['roi_pooler'] = build_roi_pooler(cfg, backbone.output_shape())
+        attrs['frozen_image_encoder'] = cfg.MODEL.CLIP.IMAGE_ENCODER.FROZEN
+        attrs['frozen_text_encoder'] = cfg.MODEL.CLIP.TEXT_ENCODER.FROZEN        
+        return attrs
+        
+    @classmethod
+    def build_clip_model(cls, cfg) -> Dict[str, Any]:
+        from zsis.modeling.layers import build_prompter_transformer
+
+        ret_val = build_clip_model(cfg)
+        clip_model = ret_val['clip_model']
+        transformer = build_prompter_transformer(cfg)
+
+        state_dict = clip_model.transformer.state_dict()
+
+        keys = ['positional_embedding', 'text_projection', 'logit_scale', 'token_embedding', 'ln_final']
+        for mkey in clip_model.state_dict():
+            if 'visual' in mkey or 'transformer' in mkey:
+                continue
+
+            for k in keys:
+                if k in mkey:
+                    state_dict[mkey] = clip_model.state_dict()[mkey]
+                    break
+
+        state_dict['ctx'] = transformer.ctx
+        transformer.load_state_dict(state_dict, strict=True)
+        setattr(ret_val['clip_model'], 'transformer', transformer)
+        # clip_model.transformer = transformer
+        
+        for attr in keys:
+            delattr(clip_model, attr)
+
+        return ret_val
+
+    def forward_images(self, batched_inputs: List[Dict[str, torch.Tensor]]) -> List[Any]:
+        """
+        Forward the images through the backbone and the network heads
+        """
+        images = self.preprocess_image(batched_inputs)
+        gt_instances = (
+            [x['instances'].to(self.device) for x in batched_inputs] if 'instances' in batched_inputs[0] else None
+        )
+        features = self.backbone(images.tensor)
+
+        if self.proposal_generator is None and self.roi_heads is None:
+            proposals, proposal_losses = [], {}
+            for i, gt_instance in enumerate(gt_instances):
+                gt_instance.set('proposal_boxes', gt_instance.get('gt_boxes'))
+                gt_instance.set('objectness_logits', torch.ones(len(gt_instance)) * 10)
+                proposals.append(gt_instance)
+            detector_losses = proposal_losses = {}
+        else:
+            if self.proposal_generator is not None:
+                proposals, proposal_losses = self.proposal_generator(images, features, gt_instances)
+            else:
+                assert 'proposals' in batched_inputs[0]
+                proposals = [x['proposals'].to(self.device) for x in batched_inputs]
+                proposal_losses = {}
+
+            _, detector_losses = self.roi_heads(images, features, proposals, gt_instances)
+
+        # roi pool the positive region features
+        roi_features, proposals = self.roi_pooler(images, features, proposals, gt_instances)
+
+        # clean up of memory that no longer required for this iteration
+        del features, gt_instances, images
+
+        if self.vis_period > 0:
+            storage = get_event_storage()
+            if storage.iter % self.vis_period == 0:
+                self.visualize_training(batched_inputs, proposals)
+
+        losses = {**detector_losses, **proposal_losses}
+        return losses, roi_features, proposals
+
+    def forward(self, batched_inputs: List[Dict[str, torch.Tensor]]):
+        if not self.training:
+            # return self.inference(batched_inputs)
+            raise NotImplementedError('Inference is not yet implemented')
+
+        # losses, roi_features, proposals = self.forward_images(batched_inputs)
+        proposals = [batched_input['instances'] for batched_input in batched_inputs]
+        
+        if self.clip_model.transformer.logit_scale.requires_grad:
+            # clamp to ln(100), as in the paper
+            with torch.no_grad():
+                self.clip_model.transformer.logit_scale.clamp_(0, np.log(100))
+
+        # image embeddings
+        self.clip_model.visual.eval()
+        roi_embeddings = []
+        for proposal, batched_input in zip(proposals, batched_inputs):
+            image = batched_input['image']
+            bboxes = proposal.gt_boxes # proposal_boxes
+
+            im_crops = []
+            for bbox in bboxes:
+                x1, y1, x2, y2 = bbox.int()
+                im_crop = T.functional.crop(image.clone(), y1, x1, y2 - y1, x2 - x1)
+                im_crop = self.preprocessing(im_crop.float() / 255.0)
+                im_crop = nn.functional.interpolate(im_crop[None], 224, mode='bilinear')[0]
+                im_crops.append(im_crop)
+
+            im_crops = torch.stack(im_crops).to(self.device)
+
+            with torch.no_grad():
+                im_enc = self.clip_model.encode_image(im_crops)
+            roi_embeddings.append(im_enc)
+        roi_embeddings = torch.vstack(roi_embeddings)
+        roi_embeddings = roi_embeddings / roi_embeddings.norm(dim=-1, keepdim=True)
+
+        # text embedding
+        key = 'gt_descriptions' if self.training else 'descriptions'        
+        text_descriptions = []
+        for batched_input in batched_inputs:
+            text_descriptions.extend(batched_input[key])
+
+        text_embeddings = self.clip_model.transformer.encode_text(text_descriptions)
+        text_embeddings = text_embeddings / text_embeddings.norm(dim=-1, keepdim=True)
+
+        logit_scale = self.clip_model.transformer.logit_scale.exp()
+        logits = logit_scale * roi_embeddings @ text_embeddings.t()
+
+        # losses = symmetric_losses(logits)
+        labels = torch.arange(0, logits.shape[0]).to(self.device)
+        loss = nn.functional.cross_entropy(logits, labels)
+        losses = {'loss_clip': loss}
+
+        # import IPython, sys; IPython.embed(); sys.exit()
+        
+        print(symmetric_losses(logits), losses)
+        return losses
+    
 
 @META_ARCH_REGISTRY.register()
 class GeneralizedRCNNWithText(GeneralizedRCNN):
@@ -282,22 +474,6 @@ class GeneralizedRCNNWithText(GeneralizedRCNN):
 
     @classmethod
     def from_config(cls, cfg) -> Dict[str, Any]:
-        """
-        if cfg.MODEL.CLIP.IMAGE_ENCODER.FROZEN:
-            from detectron2.modeling import build_backbone
-
-            backbone = build_backbone(cfg)
-            attrs = {
-                'backbone': backbone,
-                'proposal_generator': None,
-                'roi_heads': None,
-                'input_format': cfg.INPUT.FORMAT,
-                'vis_period': cfg.VIS_PERIOD,
-                'pixel_mean': cfg.MODEL.PIXEL_MEAN,
-                'pixel_std': cfg.MODEL.PIXEL_STD,
-            }
-        else:
-        """
         attrs = super().from_config(cfg)
         backbone = attrs['backbone']
 
@@ -372,11 +548,6 @@ class GeneralizedRCNNWithText(GeneralizedRCNN):
         return losses, text_features
 
     def forward(self, batched_inputs: List[Dict[str, torch.Tensor]]) -> Dict[str, torch.Tensor]:
-        import IPython, sys
-
-        IPython.embed()
-        sys.exit()
-
         if not self.training:
             return self.inference(batched_inputs)
 
@@ -406,7 +577,7 @@ class GeneralizedRCNNWithText(GeneralizedRCNN):
         logits = logit_scale * roi_features @ text_features.t()
         # logits_per_text = logits.t()
 
-        losses = {**self.losses(logits), **image_losses, **text_losses}
+        losses = {**symmetric_losses(logits), **image_losses, **text_losses}
 
         del roi_features, text_features, logits, image_losses, text_losses
 
@@ -459,12 +630,14 @@ class GeneralizedRCNNWithText(GeneralizedRCNN):
             results[i]['top_labels'] = top_labels
         return results
 
+    """
     def losses(self, logits: torch.Tensor) -> Dict[str, torch.Tensor]:
         return {'loss_clip': ((self.cross_entropy(logits, 0) + self.cross_entropy(logits, 1)) / 2.0) * 1.0}
 
     def cross_entropy(self, logits: torch.Tensor, dim: int) -> torch.Tensor:
         log_probs = nn.functional.log_softmax(logits, dim=dim)
         return -torch.mean(torch.diag(log_probs))
+    """
 
     def postprocess(
         self, instances, batched_inputs: List[Dict[str, torch.Tensor]], image_sizes: Tuple[int, int]

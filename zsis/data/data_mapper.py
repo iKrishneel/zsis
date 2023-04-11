@@ -2,9 +2,9 @@
 
 from copy import deepcopy
 import os
-from typing import Any, Dict, List, Union
+from typing import Any, Dict, List, Union, Callable
 
-import json
+import importlib
 import numpy as np
 import torch
 from detectron2.config import configurable
@@ -13,10 +13,22 @@ from detectron2.data import transforms as T
 from detectron2.data.dataset_mapper import DatasetMapper as _DM
 
 
-def load_json(filename: str) -> Dict[str, Any]:
+def get_loader(filename:str) -> Callable:
+    if '.json' in filename:
+        module, func = 'json', 'load'
+    elif '.yaml' in filename or '.yml' in filename:
+        module, func = 'yaml', 'safe_load'
+    else:
+        raise TypeError('fUnknown file type {filename}')
+
+    return getattr(importlib.import_module(module), func)
+
+
+def load_file(filename: str) -> Dict[str, Any]:
     assert os.path.isfile(filename), f'{filename} not found!'
+    loader = get_loader(filename)
     with open(filename, 'r') as fp:
-        data = json.load(fp)
+        data = loader(fp)
     return data
 
 
@@ -30,19 +42,20 @@ class DatasetMapper(_DM):
         super(DatasetMapper, self).__init__(*args, **kwargs)
 
         self.sample_descriptions = (
-            'This is an image of a %s',
-            'This image contains %s',
-            '%s is in this image',
-            'This is a photo of a %s',
+            # 'This is an image of a %s',
+            # 'This image contains %s',
+            # '%s is in this image',
+            # 'This is a photo of a %s',
+            '%s',
         )
-
-        import IPython; IPython.embed()
 
     @classmethod
     def from_config(cls, cfg, is_train: bool = True) -> Dict[str, Any]:
         ret = _DM.from_config(cfg, is_train)
         ret['is_class_agnostic'] = cfg.MODEL.ROI_BOX_HEAD.CLS_AGNOSTIC_BBOX_REG
-        ret['with_text'] = cfg.MODEL.META_ARCHITECTURE in ['GeneralizedRCNNWithText', 'GeneralizedRCNNClip']
+        ret['with_text'] = cfg.MODEL.META_ARCHITECTURE in [
+            'GeneralizedRCNNWithText', 'GeneralizedRCNNClip', 'GeneralizedRCNNClipPrompter'
+        ]
 
         # TODO: Use argument for size
         ret['min_bbox_wh'] = [30, 30]
@@ -123,7 +136,7 @@ class DatasetMapper(_DM):
         if not os.path.isfile(path_to_json):
             return {'captions': []}
 
-        data = load_json(path_to_json)
+        data = load_file(path_to_json)
         assert data['image_id'] == dataset_dict['image_id'], f'The image_id is not same {root}'
         return data
 
