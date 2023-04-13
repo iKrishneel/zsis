@@ -402,16 +402,23 @@ class GeneralizedRCNNClipPrompter(GeneralizedRCNNClip):
             im_crops = []
             for bbox in bboxes:
                 x1, y1, x2, y2 = bbox.int()
-                im_crop = T.functional.crop(image.clone(), y1, x1, y2 - y1, x2 - x1)
+                h, w = max(y2 - y1, 5), max(x2 - x1, 5)
+                im_crop = T.functional.crop(image.clone(), y1, x1, h, w)
                 im_crop = self.preprocessing(im_crop.float() / 255.0)
-                im_crop = nn.functional.interpolate(im_crop[None], 224, mode='bilinear')[0]
+                im_crop = nn.functional.interpolate(im_crop[None], (224, 224))[0]
                 im_crops.append(im_crop)
 
-            im_crops = torch.stack(im_crops).to(self.device)
-
+            # im_crops = torch.stack(im_crops).to(self.device)
+            b_size = 20
             with torch.no_grad():
-                im_enc = self.clip_model.encode_image(im_crops)
-            roi_embeddings.append(im_enc)
+                im_encs = []
+                for i in range(0, len(im_crops), b_size):
+                    enc = self.clip_model.encode_image(
+                        torch.stack(im_crops[i: i + b_size]).to(self.device)
+                    )
+                    im_encs.append(enc)
+                roi_embeddings.append(torch.vstack(im_encs))
+
         roi_embeddings = torch.vstack(roi_embeddings)
         roi_embeddings = roi_embeddings / roi_embeddings.norm(dim=-1, keepdim=True)
 
@@ -432,9 +439,8 @@ class GeneralizedRCNNClipPrompter(GeneralizedRCNNClip):
         loss = nn.functional.cross_entropy(logits, labels)
         losses = {'loss_clip': loss}
 
-        # import IPython, sys; IPython.embed(); sys.exit()
 
-        print(symmetric_losses(logits), losses)
+        # print(symmetric_losses(logits), losses)
         return losses
 
 
