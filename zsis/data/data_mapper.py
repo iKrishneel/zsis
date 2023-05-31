@@ -67,6 +67,8 @@ class DatasetMapper(_DM):
             # label_name_map = {i: k for i, k in enumerate(meta.thing_classes)}
             label_name_map = {0: 'leaf', 1: 'bean'}
             ret['label_name_map'] = label_name_map
+
+        ret['augmentations'] = [T.NoOpTransform()]
         return ret
 
     def __call__(self, dataset_dict: Dict[str, Any]):

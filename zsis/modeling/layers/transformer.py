@@ -58,7 +58,7 @@ class TextTransformer(Transformer):
         return x
 
     def encode_text(self, text: List[str]) -> torch.Tensor:
-        return self.forward(self.tokenized(text_tokens))
+        return self.forward(self.tokenize(text))
 
     def tokenize(self, text: List[str]) -> torch.Tensor:
         # TODO: Fix the device

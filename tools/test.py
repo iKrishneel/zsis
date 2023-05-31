@@ -22,7 +22,8 @@ import matplotlib.pyplot as plt
 @click.option('--weights', required=False)
 @click.option('--threshold', default=0.5)
 @click.option('--rgb/--bgr', default=True)
-def main(config_file: str, image: str, labels: str, weights: str, threshold: float, rgb: bool) -> None:
+@click.option('--prefix', default='This is a photo of a %s')
+def main(config_file: str, image: str, labels: str, weights: str, threshold: float, rgb: bool, **kwargs) -> None:
     labels = labels.split(',')
     assert len(labels) > 0, f'labels is required.'
 
@@ -40,14 +41,19 @@ def main(config_file: str, image: str, labels: str, weights: str, threshold: flo
     image = read_image(image, 'RGB' if rgb else 'BGR')
 
     predictor = DefaultPredictor(cfg)
-    text_descriptions = [f'This is a photo of a {label}' for label in labels]
+
+    prefix = kwargs.get('prefix', '%s')
+    prefix = prefix + '%s' if '%s' not in prefix else prefix
+    text_descriptions = [prefix % label for label in labels]
 
     for _ in range(1):
         time_start = time.time()
-        if cfg.MODEL.META_ARCHITECTURE == 'GeneralizedRCNNClip':
+        if cfg.MODEL.META_ARCHITECTURE in [
+            'GeneralizedRCNNClip',
+        ]:
             predictor.set_text_descriptions(text_descriptions)
             predictions = predictor(image)
-        elif cfg.MODEL.META_ARCHITECTURE == 'GeneralizedRCNNWithText':
+        elif cfg.MODEL.META_ARCHITECTURE in ['GeneralizedRCNNWithText', 'GeneralizedRCNNClipPrompter']:
             predictions = predictor(image, text_descriptions)
         else:
             predictions = predictor(image)

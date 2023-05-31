@@ -15,7 +15,7 @@ from detectron2.utils.logger import setup_logger
 
 import clip
 
-from ..layers import build_text_encoder, build_clip_model, build_attention_mask
+from ..layers import build_text_encoder, build_clip_model, build_attention_mask, build_attention_pool
 from ..roi_heads import build_roi_pooler
 
 
@@ -49,6 +49,23 @@ def symmetric_losses(logits: torch.Tensor) -> Dict[str, torch.Tensor]:
         return -torch.mean(torch.diag(log_probs))
 
     return {'loss_clip': ((cross_entropy(logits, 0) + cross_entropy(logits, 1)) / 2.0) * 1.0}
+
+
+def postprocess(
+    instances, batched_inputs: List[Dict[str, torch.Tensor]], image_sizes: Tuple[int, int]
+) -> Tuple[List[Dict[str, Instances]], List[torch.Tensor]]:
+    """
+    Rescale the output instances to the target size.
+    """
+    processed_results = []
+    valid_indices = []
+    for results_per_image, input_per_image, image_size in zip(instances, batched_inputs, image_sizes):
+        height = input_per_image.get('height', image_size[0])
+        width = input_per_image.get('width', image_size[1])
+        r, indices = detector_postprocess(results_per_image, height, width)
+        valid_indices.append(indices)
+        processed_results.append({'instances': r})
+    return processed_results, valid_indices
 
 
 @META_ARCH_REGISTRY.register()
@@ -222,7 +239,7 @@ class GeneralizedRCNNClip(GeneralizedRCNN):
 
     def patchwise_similarity(self, image: np.ndarray, bboxes: Boxes, text_features: torch.Tensor):
         im_crops = self.get_image_rois(image, bboxes)
-        image_features = l2_norm(self.clip_model.encode_image(torch.stack(im_crops).to(self.device)), dim=-1)
+        image_features = l2_norm(self.clip_model.encode_image(im_crops.to(self.device)), dim=-1)
         return self.similarity(image_features, text_features)
 
     def similarity(self, image_features, text_features):
@@ -242,7 +259,7 @@ class GeneralizedRCNNClip(GeneralizedRCNN):
             x1, y1, x2, y2 = get_roi_size(bbox, image.shape[:2], scale=self.crop_scale, use_max_len=False)
             im_crop = self.preprocessing(Image.fromarray(image[y1:y2, x1:x2].copy()))
             im_crops.append(im_crop)
-        return_crops
+        return torch.stack(im_crops)
 
     def get_text_features(self, batched_inputs: List[Dict[str, torch.Tensor]], index: int = 0) -> torch.Tensor:
         if 'text_descriptions' in batched_inputs[index]:
@@ -279,11 +296,12 @@ class GeneralizedRCNNClipPrompter(GeneralizedRCNNClip):
         # self.transformer = self.clip_model.transformer
         self.roi_pooler = roi_pooler
 
-        # TEMP:
-        del self.backbone
-        del self.proposal_generator
+        # TEMP:TRAINING ONLY ON THE GROUND TRUTH
+        # del self.backbone
+        # del self.proposal_generator
+        # del self.roi_heads
+
         del self.roi_pooler
-        del self.roi_heads
 
         # self.preprocessing = T.Compose([self.preprocessing.transforms[0], self.preprocessing.transforms[-1]])
         self.preprocessing = T.Compose([self.preprocessing.transforms[-1]])
@@ -379,32 +397,41 @@ class GeneralizedRCNNClipPrompter(GeneralizedRCNNClip):
         losses = {**detector_losses, **proposal_losses}
         return losses, roi_features, proposals
 
-    def forward(self, batched_inputs: List[Dict[str, torch.Tensor]]):
+    def forward_text(self, batched_inputs: List[Dict[str, torch.Tensor]]) -> Dict[str, Any]:
+        """
+        Forward the text descriptions through the text encoding network
+        """
+        key = 'gt_descriptions' if self.training else 'descriptions'
+        text_descriptions = []
+        for batched_input in batched_inputs:
+            text_descriptions.extend(batched_input[key])
+
+        text_embeddings = self.clip_model.transformer.encode_text(text_descriptions)
+        text_embeddings = text_embeddings / text_embeddings.norm(dim=-1, keepdim=True)
+
         if not self.training:
-            # return self.inference(batched_inputs)
-            raise NotImplementedError('Inference is not yet implemented')
+            return text_embeddings
 
-        # losses, roi_features, proposals = self.forward_images(batched_inputs)
-        proposals = [batched_input['instances'] for batched_input in batched_inputs]
+        # TODO: Implement loss function
+        losses = {}
+        return losses, text_embeddings
 
-        if self.clip_model.transformer.logit_scale.requires_grad:
-            # clamp to ln(100), as in the paper
-            with torch.no_grad():
-                self.clip_model.transformer.logit_scale.clamp_(0, np.log(100))
-
-        # image embeddings
+    def get_roi_features(self, batched_inputs: List[Dict[str, torch.Tensor]], proposals) -> T:
         self.clip_model.visual.eval()
         roi_embeddings = []
         for proposal, batched_input in zip(proposals, batched_inputs):
             image = batched_input['image']
-            bboxes = proposal.gt_boxes  # proposal_boxes
+            try:
+                bboxes = proposal.gt_boxes  # proposal_boxes
+            except AttributeError:
+                bboxes = proposal.pred_boxes
 
             im_crops = []
             for bbox in bboxes:
                 x1, y1, x2, y2 = bbox.int()
                 im_crop = T.functional.crop(image.clone(), y1, x1, y2 - y1, x2 - x1)
                 im_crop = self.preprocessing(im_crop.float() / 255.0)
-                im_crop = nn.functional.interpolate(im_crop[None], 224, mode='bilinear')[0]
+                im_crop = nn.functional.interpolate(im_crop[None], 224)[0]
                 im_crops.append(im_crop)
 
             im_crops = torch.stack(im_crops).to(self.device)
@@ -413,16 +440,26 @@ class GeneralizedRCNNClipPrompter(GeneralizedRCNNClip):
                 im_enc = self.clip_model.encode_image(im_crops)
             roi_embeddings.append(im_enc)
         roi_embeddings = torch.vstack(roi_embeddings)
-        roi_embeddings = roi_embeddings / roi_embeddings.norm(dim=-1, keepdim=True)
+        return (roi_embeddings / roi_embeddings.norm(dim=-1, keepdim=True)).float()
+
+    def forward(self, batched_inputs: List[Dict[str, torch.Tensor]]):
+        if not self.training:
+            return self.inference(batched_inputs)
+
+        # losses, roi_features, proposals = self.forward_images(batched_inputs)
+        # training only on the proposals
+        proposals = [batched_input['instances'] for batched_input in batched_inputs]
+
+        if self.clip_model.transformer.logit_scale.requires_grad:
+            # clamp to ln(100), as in the paper
+            with torch.no_grad():
+                self.clip_model.transformer.logit_scale.clamp_(0, np.log(100))
+
+        # image embeddings
+        roi_embeddings = self.get_roi_features(batched_inputs, proposals)
 
         # text embedding
-        key = 'gt_descriptions' if self.training else 'descriptions'
-        text_descriptions = []
-        for batched_input in batched_inputs:
-            text_descriptions.extend(batched_input[key])
-
-        text_embeddings = self.clip_model.transformer.encode_text(text_descriptions)
-        text_embeddings = text_embeddings / text_embeddings.norm(dim=-1, keepdim=True)
+        text_embeddings = self.forward_text(batched_inputs)
 
         logit_scale = self.clip_model.transformer.logit_scale.exp()
         logits = logit_scale * roi_embeddings @ text_embeddings.t()
@@ -432,10 +469,44 @@ class GeneralizedRCNNClipPrompter(GeneralizedRCNNClip):
         loss = nn.functional.cross_entropy(logits, labels)
         losses = {'loss_clip': loss}
 
-        # import IPython, sys; IPython.embed(); sys.exit()
-
-        print(symmetric_losses(logits), losses)
+        # print(symmetric_losses(logits), losses)
         return losses
+
+    def inference(
+        self,
+        batched_inputs: List[Dict[str, torch.Tensor]],
+        detected_instances: Optional[List[Instances]] = None,
+        do_postprocess: bool = True,
+    ):
+        assert not self.training, 'Running inference in training mode'
+
+        index = 0
+        results = super(GeneralizedRCNNClip, self).inference(batched_inputs, do_postprocess=False)
+
+        if len(results) == 0:
+            return
+
+        # get roi wise features
+        roi_features = self.get_roi_features(batched_inputs, [results[index]])
+
+        # run the text encoding
+        text_features = self.forward_text(batched_inputs)
+
+        text_probs = (self.prob_scale.to(self.device) * roi_features @ text_features.t()).softmax(dim=-1)
+
+        if do_postprocess:
+            assert not torch.jit.is_scripting(), 'Scripting is not supported for postprocess.'
+            images = self.preprocess_image(batched_inputs)
+            results, valid_indices = postprocess(results, batched_inputs, images.image_sizes)
+            text_probs = text_probs[valid_indices]
+
+        top_probs, top_labels = text_probs.topk(self.topk, dim=1)
+
+        # TODO: support for multiple batch size
+        for i in range(len(results)):
+            results[i]['top_probs'] = top_probs
+            results[i]['top_labels'] = top_labels
+        return results
 
 
 @META_ARCH_REGISTRY.register()
@@ -618,11 +689,12 @@ class GeneralizedRCNNWithText(GeneralizedRCNN):
 
         # l2 normalization
         roi_features, text_features = [l2_norm(f) for f in [roi_features, text_features]]
+
         text_probs = (self.prob_scale.to(self.device) * roi_features @ text_features.t()).softmax(dim=-1)
 
         if do_postprocess:
             assert not torch.jit.is_scripting(), 'Scripting is not supported for postprocess.'
-            results, valid_indices = self.postprocess(results, batched_inputs, images.image_sizes)
+            results, valid_indices = postprocess(results, batched_inputs, images.image_sizes)
             text_probs = text_probs[valid_indices]
 
         top_probs, top_labels = text_probs.topk(self.topk, dim=1)
@@ -642,22 +714,6 @@ class GeneralizedRCNNWithText(GeneralizedRCNN):
         return -torch.mean(torch.diag(log_probs))
     """
 
-    def postprocess(
-        self, instances, batched_inputs: List[Dict[str, torch.Tensor]], image_sizes: Tuple[int, int]
-    ) -> Tuple[List[Dict[str, Instances]], List[torch.Tensor]]:
-        """
-        Rescale the output instances to the target size.
-        """
-        processed_results = []
-        valid_indices = []
-        for results_per_image, input_per_image, image_size in zip(instances, batched_inputs, image_sizes):
-            height = input_per_image.get('height', image_size[0])
-            width = input_per_image.get('width', image_size[1])
-            r, indices = detector_postprocess(results_per_image, height, width)
-            valid_indices.append(indices)
-            processed_results.append({'instances': r})
-        return processed_results, valid_indices
-
 
 def detector_postprocess(results: Instances, output_height: int, output_width: int, mask_threshold: float = 0.5):
     """
@@ -675,6 +731,7 @@ def detector_postprocess(results: Instances, output_height: int, output_width: i
     Returns:
         Instances: the resized output from the model, based on the output resolution
     """
+
     if isinstance(output_width, torch.Tensor):
         # This shape might (but not necessarily) be tensors during tracing.
         # Converts integer tensors to float temporaries to ensure true

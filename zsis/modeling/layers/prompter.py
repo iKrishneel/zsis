@@ -48,6 +48,11 @@ class PrompterTextTransformer(_TextTransformer):
         ctx = self.ctx
         ctx = ctx[None].expand(len(texts), -1, -1) if ctx.dim() == 2 else ctx
 
+        import IPython, sys
+
+        IPython.embed()
+        sys.exit()
+
         prompts = torch.cat([prefix, ctx, suffix], dim=1)
         return self.forward(prompts, text_tokens)
 
