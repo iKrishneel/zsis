@@ -222,7 +222,7 @@ class GeneralizedRCNNClip(GeneralizedRCNN):
 
     def patchwise_similarity(self, image: np.ndarray, bboxes: Boxes, text_features: torch.Tensor):
         im_crops = self.get_image_rois(image, bboxes)
-        image_features = l2_norm(self.clip_model.encode_image(torch.stack(im_crops).to(self.device)), dim=-1)
+        image_features = l2_norm(self.clip_model.encode_image(im_crops.to(self.device)), dim=-1)
         return self.similarity(image_features, text_features)
 
     def similarity(self, image_features, text_features):
@@ -242,7 +242,7 @@ class GeneralizedRCNNClip(GeneralizedRCNN):
             x1, y1, x2, y2 = get_roi_size(bbox, image.shape[:2], scale=self.crop_scale, use_max_len=False)
             im_crop = self.preprocessing(Image.fromarray(image[y1:y2, x1:x2].copy()))
             im_crops.append(im_crop)
-        return_crops
+        return torch.stack(im_crops)
 
     def get_text_features(self, batched_inputs: List[Dict[str, torch.Tensor]], index: int = 0) -> torch.Tensor:
         if 'text_descriptions' in batched_inputs[index]:
